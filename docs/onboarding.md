@@ -20,7 +20,7 @@ It assumes basic familiarity with Docker, Python, and JavaScript.
 * A TEI or manuscript transcription system
 * A lightweight demo with no consequences
 
-You are working with billions of words. Be deliberate.
+You are working with **BILLIONS** of words. Be deliberate.
 
 ---
 
