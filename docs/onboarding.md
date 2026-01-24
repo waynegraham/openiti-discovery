@@ -67,7 +67,7 @@ You are working with **BILLIONS** of words. Be deliberate.
 ### 1. Clone the Repositories
 
 ```bash
-git clone https://github.com/your-org/openiti-discovery.git
+git clone https://github.com/waynegraham/openiti-discovery.git
 cd openiti-discovery
 
 git clone https://github.com/OpenITI/RELEASE.git
