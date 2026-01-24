@@ -1,0 +1,205 @@
+name: openiti-discovery
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: openiti_postgres
+    environment:
+      POSTGRES_DB: openiti
+      POSTGRES_USER: openiti
+      POSTGRES_PASSWORD: openiti
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openiti -d openiti"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [openiti_net]
+
+  opensearch:
+    image: opensearchproject/opensearch:3
+    container_name: openiti_opensearch
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms2g -Xmx2g"
+      plugins.security.disabled: "true"
+      # For local dev. Do NOT do this for public hosting.
+      network.host: "0.0.0.0"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"  # API
+      - "9600:9600"  # Perf analyzer
+    volumes:
+      - os_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks: [openiti_net]
+
+  opensearch_dashboards:
+    image: opensearchproject/opensearch-dashboards:3
+    container_name: openiti_dashboards
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks: [openiti_net]
+    profiles: ["dashboards"]
+
+  qdrant:
+    image: qdrant/qdrant:v1.16
+    container_name: openiti_qdrant
+    ports:
+      - "6333:6333"  # HTTP
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks: [openiti_net]
+
+  redis:
+    image: redis:8
+    container_name: openiti_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [openiti_net]
+    profiles: ["cache"]
+
+  api:
+    # Build your FastAPI app image from ./apps/api (example structure)
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile
+    container_name: openiti_api
+    environment:
+      # Database
+      DATABASE_URL: postgresql+psycopg://openiti:openiti@postgres:5432/openiti
+
+      # OpenSearch
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX_CHUNKS: openiti_chunks
+
+      # Qdrant
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: openiti_chunks
+
+      # Optional cache
+      REDIS_URL: redis://redis:6379/0
+
+      # Corpus location inside container
+      CORPUS_ROOT: /corpus/RELEASE
+
+      # Embeddings config
+      EMBEDDING_DEVICE: cpu          # cpu|cuda
+      EMBEDDING_BATCH_SIZE: "64"     # tune
+      EMBEDDING_MODEL: "multilingual" # placeholder; you’ll set actual model id in code
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the corpus repo (cloned locally) read-only
+      - ./RELEASE:/corpus/RELEASE:ro
+      # Optional: store derived artifacts (chunk caches, logs, checkpoints)
+      - ./data/artifacts:/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks: [openiti_net]
+    # If you enabled redis via profile cache, the api can still start without it;
+    # your code should treat redis as optional unless you require it.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./apps/frontend/Dockerfile
+    container_name: openiti_frontend
+    environment:
+      # Public URL the browser will use
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      # If you proxy through Next, you can set internal URL too
+      API_INTERNAL_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks: [openiti_net]
+    command: ["npm", "run", "dev"]
+
+  ingest:
+    # One-shot ingestion job container.
+    # Uses the same image as api so you don’t duplicate dependencies.
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile
+    container_name: openiti_ingest
+    environment:
+      DATABASE_URL: postgresql+psycopg://openiti:openiti@postgres:5432/openiti
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX_CHUNKS: openiti_chunks
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: openiti_chunks
+      REDIS_URL: redis://redis:6379/0
+      CORPUS_ROOT: /corpus/RELEASE
+
+      # Ingest controls
+      INGEST_MODE: "full"            # full|subset
+      INGEST_ONLY_PRI: "true"        # true|false
+      INGEST_LANGS: "ara,fas,ota"    # ISO-ish tags you’ll enforce in code
+      INGEST_WORK_LIMIT: "0"         # 0 = no limit; set N for dev
+      CHUNK_TARGET_WORDS: "300"
+      EMBEDDING_DEVICE: cpu          # cpu|cuda
+      EMBEDDING_BATCH_SIZE: "64"
+      EMBEDDING_MODEL: "multilingual"
+    volumes:
+      - ./RELEASE:/corpus/RELEASE:ro
+      - ./data/artifacts:/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks: [openiti_net]
+    profiles: ["ingest"]
+    command: ["python", "-m", "app.ingest.run"]
+
+networks:
+  openiti_net:
+
+volumes:
+  pg_data:
+  os_data:
+  qdrant_data:
+  redis_data:
