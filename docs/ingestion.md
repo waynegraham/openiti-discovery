@@ -41,7 +41,7 @@ flowchart TD
   H --> I[Compute stable passage IDs]
   I --> J[Upsert passages + pointers into PostgreSQL]
   J --> K[Index passages into OpenSearch]
-  K --> L[Generate embeddings (CPU/GPU)]
+  K --> L["Generate embeddings (CPU/GPU)"]
   L --> M[Upsert vectors into Qdrant]
   M --> N[Mark ingest complete/checkpoint]
 ```
