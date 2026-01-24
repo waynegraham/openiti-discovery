@@ -37,7 +37,7 @@ flowchart TD
   D --> E[Resolve file -> version/work/author via metadata]
   E --> F[Parse OpenITI mARkdown structure]
   F --> G[Normalize Arabic-script text]
-  G --> H[Chunk into passages (300 words)]
+  G --> H["Chunk into passages (~300 words)"]
   H --> I[Compute stable passage IDs]
   I --> J[Upsert passages + pointers into PostgreSQL]
   J --> K[Index passages into OpenSearch]
