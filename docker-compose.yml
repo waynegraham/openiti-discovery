@@ -11,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U openiti -d openiti"]
       interval: 5s
@@ -23,6 +23,7 @@ services:
     image: opensearchproject/opensearch:3
     container_name: openiti_opensearch
     environment:
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
       discovery.type: single-node
       bootstrap.memory_lock: "true"
       OPENSEARCH_JAVA_OPTS: "-Xms2g -Xmx2g"
@@ -52,6 +53,7 @@ services:
     image: opensearchproject/opensearch-dashboards:3
     container_name: openiti_dashboards
     environment:
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
       OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
       DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
     ports:
@@ -71,7 +73,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:6333/healthz > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -128,12 +130,9 @@ services:
       # Optional: store derived artifacts (chunk caches, logs, checkpoints)
       - ./data/artifacts:/artifacts
     depends_on:
-      postgres:
-        condition: service_healthy
-      opensearch:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
+      - postgres
+      - opensearch
+      - qdrant
     networks: [openiti_net]
     # If you enabled redis via profile cache, the api can still start without it;
     # your code should treat redis as optional unless you require it.
