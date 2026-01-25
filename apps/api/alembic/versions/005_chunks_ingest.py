@@ -1,6 +1,6 @@
 """create chunks and ingest_state tables
 
-Revision ID: 005_create_chunks_and_ingest_state
+Revision ID: 005_chunks_ingest
 Revises: 004_create_versions
 Create Date: 2026-01-25
 """
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-revision = "005_create_chunks_and_ingest_state"
-down_revision = "004_create_versions"
+revision = "005_chunks_ingest"
+down_revision = "004_versions"
 branch_labels = None
 depends_on = None
 

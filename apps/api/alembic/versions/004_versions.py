@@ -1,6 +1,6 @@
 """create versions table
 
-Revision ID: 004_create_versions
+Revision ID: 004_versions
 Revises: 003_create_works
 Create Date: 2026-01-25
 """
@@ -8,8 +8,8 @@ Create Date: 2026-01-25
 from alembic import op
 import sqlalchemy as sa
 
-revision = "004_create_versions"
-down_revision = "003_create_works"
+revision = "004_versions"
+down_revision = "003_works"
 branch_labels = None
 depends_on = None
 
