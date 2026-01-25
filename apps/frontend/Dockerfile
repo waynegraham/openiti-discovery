@@ -1,25 +1,31 @@
 # apps/frontend/Dockerfile
 #
-# Minimal Next.js frontend container (dev-first).
-# Production build can be added later with a multi-stage build.
+# Minimal Next.js frontend container using pnpm (dev-first).
+# Production build should be a separate multi-stage Dockerfile.
 
 FROM node:20-slim
 
-# Keep npm quiet and predictable
+# Environment sanity
 ENV NODE_ENV=development \
-    NPM_CONFIG_LOGLEVEL=warn
+    PNPM_HOME=/pnpm \
+    PATH=/pnpm:$PATH
 
 WORKDIR /app
 
-# Install dependencies first for better layer caching
-COPY apps/frontend/package.json apps/frontend/package-lock.json* /app/
+# Enable pnpm via Corepack (bundled with Node 20)
+RUN corepack enable \
+    && corepack prepare pnpm@latest --activate
 
-RUN npm install
+# Install dependencies first for better layer caching
+# Supports both lockfile-present and lockfile-absent states
+COPY apps/frontend/package.json apps/frontend/pnpm-lock.yaml* /app/
+
+RUN pnpm install
 
 # Copy the rest of the frontend code
 COPY apps/frontend /app
 
 EXPOSE 3000
 
-# Dev server
-CMD ["npm", "run", "dev"]
+# Next.js dev server
+CMD ["pnpm", "dev"]
