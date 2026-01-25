@@ -1,4 +1,3 @@
-PUT _index_template/openiti_chunks_template_v1
 {
   "index_patterns": ["openiti_chunks_v*"],
   "priority": 500,
@@ -25,10 +24,6 @@ PUT _index_template/openiti_chunks_template_v1
             ]
           }
         },
-        "filter": {
-          "openiti_arabic_norm": { "type": "normalization", "language": "arabic" },
-          "openiti_persian_norm": { "type": "normalization", "language": "persian" }
-        },
         "normalizer": {
           "openiti_keyword_norm": {
             "type": "custom",
@@ -44,8 +39,8 @@ PUT _index_template/openiti_chunks_template_v1
             "filter": [
               "lowercase",
               "decimal_digit",
-              "stop",
-              "openiti_arabic_norm"
+              "arabic_normalization",
+              "stop"
             ]
           },
           "openiti_arabic_no_stem": {
@@ -55,8 +50,8 @@ PUT _index_template/openiti_chunks_template_v1
             "filter": [
               "lowercase",
               "decimal_digit",
-              "stop",
-              "openiti_arabic_norm"
+              "arabic_normalization",
+              "stop"
             ]
           },
           "openiti_persian_main": {
@@ -66,8 +61,8 @@ PUT _index_template/openiti_chunks_template_v1
             "filter": [
               "lowercase",
               "decimal_digit",
-              "openiti_arabic_norm",
-              "openiti_persian_norm",
+              "arabic_normalization",
+              "persian_normalization",
               "stop"
             ]
           },
@@ -79,13 +74,13 @@ PUT _index_template/openiti_chunks_template_v1
               "lowercase",
               "decimal_digit"
             ]
-          },
-
-          "openiti_icu_folded": {
-            "type": "custom",
-            "tokenizer": "icu_tokenizer",
-            "filter": ["icu_folding"]
           }
+
+          /*
+            If you want ICU folding:
+            - install analysis-icu plugin
+            - then add the analyzer below and content.folded field in mappings
+          */
         }
       }
     },
@@ -112,8 +107,7 @@ PUT _index_template/openiti_chunks_template_v1
           "fields": {
             "exact":   { "type": "text", "analyzer": "openiti_exact" },
             "nostem":  { "type": "text", "analyzer": "openiti_arabic_no_stem" },
-            "persian": { "type": "text", "analyzer": "openiti_persian_main" },
-            "folded":  { "type": "text", "analyzer": "openiti_icu_folded" }
+            "persian": { "type": "text", "analyzer": "openiti_persian_main" }
           }
         }
       }
@@ -123,7 +117,7 @@ PUT _index_template/openiti_chunks_template_v1
     }
   },
   "_meta": {
-    "description": "OpenITI chunk index template with Arabic-script normalization + multi-fields for exact/nostem/Persian/ICU-folding.",
+    "description": "OpenITI chunk index template with Arabic/Persian normalization and multi-fields for exact/nostem.",
     "version": 1
   }
 }

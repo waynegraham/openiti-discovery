@@ -20,7 +20,10 @@ services:
     networks: [openiti_net]
 
   opensearch:
-    image: opensearchproject/opensearch:3
+    # image: opensearchproject/opensearch:3
+    build:
+      context: .
+      dockerfile: ./opensearch/Dockerfile
     container_name: openiti_opensearch
     environment:
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
@@ -137,7 +140,7 @@ services:
     # If you enabled redis via profile cache, the api can still start without it;
     # your code should treat redis as optional unless you require it.
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
+    
   frontend:
     build:
       context: .
