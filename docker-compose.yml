@@ -187,12 +187,9 @@ services:
       - ./RELEASE:/corpus/RELEASE:ro
       - ./data/artifacts:/artifacts
     depends_on:
-      postgres:
-        condition: service_healthy
-      opensearch:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
+      - postgres
+      - opensearch
+      - qdrant
     networks: [openiti_net]
     profiles: ["ingest"]
     command: ["python", "-m", "app.ingest.run"]
