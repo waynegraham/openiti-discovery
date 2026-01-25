@@ -124,7 +124,8 @@ services:
       # Embeddings config
       EMBEDDING_DEVICE: cpu          # cpu|cuda
       EMBEDDING_BATCH_SIZE: "64"     # tune
-      EMBEDDING_MODEL: "multilingual" # placeholder; you’ll set actual model id in code
+      EMBEDDING_MODEL: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      HF_HOME: /hf_cache
     ports:
       - "8000:8000"
     volumes:
@@ -132,6 +133,8 @@ services:
       - ./RELEASE:/corpus/RELEASE:ro
       # Optional: store derived artifacts (chunk caches, logs, checkpoints)
       - ./data/artifacts:/artifacts
+      # Shared Hugging Face cache to avoid re-downloading models
+      - hf_cache:/hf_cache
     depends_on:
       - postgres
       - opensearch
@@ -182,10 +185,12 @@ services:
       CHUNK_TARGET_WORDS: "300"
       EMBEDDING_DEVICE: cpu          # cpu|cuda
       EMBEDDING_BATCH_SIZE: "64"
-      EMBEDDING_MODEL: "multilingual"
+      EMBEDDING_MODEL: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      HF_HOME: /hf_cache
     volumes:
       - ./RELEASE:/corpus/RELEASE:ro
       - ./data/artifacts:/artifacts
+      - hf_cache:/hf_cache
     depends_on:
       - postgres
       - opensearch
@@ -202,3 +207,4 @@ volumes:
   os_data:
   qdrant_data:
   redis_data:
+  hf_cache:

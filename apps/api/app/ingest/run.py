@@ -486,11 +486,12 @@ def run() -> None:
     # Process each text end-to-end
     for t in tqdm(texts, desc="Ingest versions", unit="version"):
         try:
-            set_ingest_state(engine, t.version_id, "discovered")
-
             # Basic upserts (metadata-heavy ingestion comes later)
             upsert_author(engine, t.author_id)
             upsert_work(engine, t.work_id, t.author_id)
+            # Ensure the version exists before any ingest_state updates (FK constraint).
+            upsert_version(engine, t, checksum=None, word_count=None, char_count=None)
+            set_ingest_state(engine, t.version_id, "discovered")
 
             raw = read_text_file(t.abs_path)
             checksum = sha256_file(t.abs_path)
