@@ -150,6 +150,19 @@ git clone https://github.com/OpenITI/RELEASE.git
 docker compose up -d
 ```
 
+### 2a. Local Interfaces and URLs
+
+Once the stack is running, these are the default local endpoints:
+
+* Frontend (Next.js): http://localhost:3000
+* API (FastAPI): http://localhost:8000
+* FastAPI docs (Swagger): http://localhost:8000/docs
+* FastAPI docs (ReDoc): http://localhost:8000/redoc
+* OpenSearch API: http://localhost:9200
+* OpenSearch Dashboards: http://localhost:5601 (requires `dashboards` profile)
+* Qdrant API: http://localhost:6333
+* Qdrant UI: http://localhost:6333/dashboard
+
 ### 3. Create OpenSearch Indices
 
 Apply the index template (once):
