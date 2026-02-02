@@ -26,13 +26,18 @@ export default async function Home({
           {t("description")}
         </p>
 
-        <form className="mt-10 flex w-full max-w-2xl flex-col gap-3 sm:flex-row">
+        <form
+          action={`/${locale}/search`}
+          method="get"
+          className="mt-10 flex w-full max-w-2xl flex-col gap-3 sm:flex-row"
+        >
           <label htmlFor="discovery-search" className="sr-only">
             {t("searchLabel")}
           </label>
           <input
             id="discovery-search"
             type="search"
+            name="q"
             placeholder={t("searchPlaceholder")}
             className="h-12 flex-1 rounded-full border border-[#d9cdbf] bg-white/80 px-5 text-base text-[#1e1a14] shadow-sm outline-none transition focus:border-[#9ab3f5] focus:bg-white focus:ring-2 focus:ring-[#9ab3f5]/30"
           />
