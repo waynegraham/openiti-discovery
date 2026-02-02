@@ -1,0 +1,12 @@
+{
+  "landing": {
+    "eyebrow": "OpenITI Discovery",
+    "title": "Search across the OpenITI corpus in one place.",
+    "description": "A focused entry point for exploring Arabic and Islamicate texts, authors, places, and eras. Type a keyword, a person, or a title and start mapping the literary record.",
+    "searchLabel": "Search the OpenITI corpus",
+    "searchPlaceholder": "Search texts, authors, places...",
+    "searchButton": "Search",
+    "helper": "Start broad, then filter by region, period, or collection.",
+    "examples": "Try: Qawacid Fiqhiyya, Ma Hiya Sinima"
+  }
+}
