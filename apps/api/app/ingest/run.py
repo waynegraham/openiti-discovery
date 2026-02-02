@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Iterable, Iterator, List, Optional, Tuple, Dict
 
 from tqdm import tqdm
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 
 from ..db import get_engine
@@ -377,7 +378,7 @@ def upsert_chunks_batch(engine: Engine, rows: List[dict]) -> None:
           :text_raw, :text_norm,
           :word_count, :token_count,
           :prev_chunk_id, :next_chunk_id,
-          :metadata::jsonb
+          :metadata
         )
         ON CONFLICT (chunk_id) DO UPDATE
           SET text_raw = EXCLUDED.text_raw,
@@ -388,7 +389,7 @@ def upsert_chunks_batch(engine: Engine, rows: List[dict]) -> None:
               next_chunk_id = EXCLUDED.next_chunk_id,
               updated_at = now()
         """
-    )
+    ).bindparams(bindparam("metadata", type_=JSONB))
     with engine.begin() as conn:
         conn.execute(sql, rows)
 
@@ -461,6 +462,19 @@ def run() -> None:
         level=os.getenv("LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         stream=sys.stdout,
+    )
+
+    ingest_settings = {
+        k: v for k, v in os.environ.items() if k.startswith("INGEST_")
+    }
+    ingest_settings_str = ", ".join(
+        f"{k}={ingest_settings[k]}" for k in sorted(ingest_settings)
+    ) or "none"
+    LOG.info(
+        "Ingest start: embeddings=%s device=%s; ingest_settings=%s",
+        "enabled" if EMBEDDINGS_ENABLED else "disabled",
+        EMBEDDING_DEVICE,
+        ingest_settings_str,
     )
 
     corpus_root = Path(os.getenv("CORPUS_ROOT", "")).resolve()
