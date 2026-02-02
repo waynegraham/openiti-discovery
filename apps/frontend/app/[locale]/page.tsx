@@ -1,7 +1,13 @@
-import { useTranslations } from "next-intl";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 
-export default function Home() {
-  const t = useTranslations("landing");
+export default async function Home({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations({ locale, namespace: "landing" });
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#f6f1e9] text-[#1e1a14]">
