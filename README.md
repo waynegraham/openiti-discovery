@@ -144,13 +144,29 @@ cd openiti-discovery
 git clone https://github.com/OpenITI/RELEASE.git
 ```
 
-### 2. Start Core Services
+### 2. Configure Environment
+
+Copy the example env file and adjust paths as needed:
+
+```bash
+cp .env.example .env
+```
+
+At minimum, set the path to your local RELEASE clone if your compose file expects it.
+
+### 3. Start Core Services
 
 ```bash
 docker compose up -d
 ```
 
-### 2a. Local Interfaces and URLs
+### 4. Run Database Migrations
+
+```bash
+docker compose exec api alembic upgrade head
+```
+
+### 5. Local Interfaces and URLs
 
 Once the stack is running, these are the default local endpoints:
 
@@ -163,7 +179,7 @@ Once the stack is running, these are the default local endpoints:
 * Qdrant API: http://localhost:6333
 * Qdrant UI: http://localhost:6333/dashboard
 
-### 3. Create OpenSearch Indices
+### 6. Create OpenSearch Indices
 
 Apply the index template (once):
 
