@@ -1,5 +1,16 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../../../components/ui/card";
+import { Input } from "../../../components/ui/input";
+
 const results = [
   {
     id: "p-001",
@@ -74,30 +85,35 @@ export default async function SearchPage({
   const query = resolvedSearchParams.q?.trim() || t("defaultQuery");
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f5efe6] text-[#1f1b16]">
-      <div className="pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-[#e4c7a2]/60 blur-3xl" />
-      <div className="pointer-events-none absolute right-[-120px] top-32 h-96 w-96 rounded-full bg-[#93b8b0]/45 blur-[120px]" />
-      <div className="pointer-events-none absolute bottom-[-140px] left-1/3 h-[28rem] w-[28rem] rounded-full bg-[#f0d3b5]/50 blur-[130px]" />
+    <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
+      <div className="pointer-events-none absolute -left-20 top-10 h-72 w-72 rounded-full bg-[color:var(--color-secondary)]/50 blur-3xl" />
+      <div className="pointer-events-none absolute right-[-120px] top-32 h-96 w-96 rounded-full bg-[color:var(--color-accent)]/40 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-[-140px] left-1/3 h-[28rem] w-[28rem] rounded-full bg-[color:var(--color-muted)]/60 blur-[130px]" />
 
       <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col gap-10 px-6 py-14 sm:px-10 lg:px-12">
         <header className="space-y-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#6a5b4d]">
+          <Badge
+            variant="outline"
+            className="w-fit border-border/70 bg-background/70 px-4 py-2 text-[10px] uppercase tracking-[0.3em] text-muted-foreground"
+          >
             {t("eyebrow")}
-          </p>
+          </Badge>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-3">
               <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
                 {t("title")}
               </h1>
-              <p className="text-sm text-[#6a5b4d]">{t("resultCount", { query })}</p>
+              <p className="text-sm text-muted-foreground">
+                {t("resultCount", { query })}
+              </p>
             </div>
-            <div className="flex items-center gap-3 text-sm text-[#6a5b4d]">
-              <span className="rounded-full border border-[#d8c9b9] bg-white/70 px-3 py-1">
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+              <Badge variant="secondary" className="rounded-full px-3 py-1">
                 {results.length} {t("matchesLabel")}
-              </span>
+              </Badge>
               <label className="flex items-center gap-2">
                 <span>{t("sortLabel")}</span>
-                <select className="rounded-full border border-[#d8c9b9] bg-white/80 px-3 py-1 text-[#1f1b16] shadow-sm">
+                <select className="h-10 rounded-full border border-input bg-background/80 px-3 text-foreground shadow-sm">
                   <option>{t("sortRelevance")}</option>
                   <option>{t("sortRecency")}</option>
                   <option>{t("sortLength")}</option>
@@ -109,239 +125,253 @@ export default async function SearchPage({
             <label htmlFor="search-query" className="sr-only">
               {t("queryLabel")}
             </label>
-            <input
+            <Input
               id="search-query"
               type="search"
               placeholder={t("queryPlaceholder")}
               defaultValue={query}
-              className="h-12 flex-1 rounded-full border border-[#d8c9b9] bg-white/80 px-5 text-base text-[#1f1b16] shadow-sm outline-none transition focus:border-[#93b8b0] focus:bg-white focus:ring-2 focus:ring-[#93b8b0]/30"
+              className="h-12 flex-1 rounded-full bg-background/80 px-5 text-base"
             />
-            <button
-              type="submit"
-              className="h-12 rounded-full bg-[#1f1b16] px-6 text-base font-semibold text-[#f5efe6] transition hover:translate-y-[-1px] hover:bg-[#2b251f]"
-            >
+            <Button type="submit" className="h-12 rounded-full px-6 text-base">
               {t("searchButton")}
-            </button>
+            </Button>
           </form>
         </header>
 
         <section className="grid gap-8 lg:grid-cols-[280px_1fr]">
-          <aside className="space-y-6 rounded-3xl border border-[#e1d5c7] bg-white/70 p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[#6a5b4d]">
-                {t("filtersTitle")}
-              </h2>
-              <button className="text-xs font-semibold text-[#7a6b5c]">
-                {t("clearFilters")}
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#7a6b5c]">
-                  {t("activeFilters")}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <span className="rounded-full bg-[#1f1b16] px-3 py-1 text-xs font-semibold text-[#f5efe6]">
-                    Passage
-                  </span>
-                  <span className="rounded-full bg-[#1f1b16] px-3 py-1 text-xs font-semibold text-[#f5efe6]">
-                    7th-9th/13th-15th c.
-                  </span>
+          <aside>
+            <Card className="rounded-3xl bg-card/70 backdrop-blur-sm">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  {t("filtersTitle")}
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs font-semibold text-muted-foreground"
+                >
+                  {t("clearFilters")}
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    {t("activeFilters")}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className="rounded-full">Passage</Badge>
+                    <Badge className="rounded-full">7th-9th/13th-15th c.</Badge>
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-[#3f372f]">{t("filterType")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {facets.type.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-[#dbcdbf] px-3 py-1 text-xs text-[#4d4339]"
-                    >
-                      {item}
-                    </span>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">{t("filterType")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {facets.type.map((item) => (
+                      <Badge
+                        key={item}
+                        variant="outline"
+                        className="border-border/70 text-muted-foreground"
+                      >
+                        {item}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-[#3f372f]">{t("filterPeriod")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {facets.period.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-[#dbcdbf] px-3 py-1 text-xs text-[#4d4339]"
-                    >
-                      {item}
-                    </span>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">{t("filterPeriod")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {facets.period.map((item) => (
+                      <Badge
+                        key={item}
+                        variant="outline"
+                        className="border-border/70 text-muted-foreground"
+                      >
+                        {item}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-[#3f372f]">{t("filterRegion")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {facets.region.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-[#dbcdbf] px-3 py-1 text-xs text-[#4d4339]"
-                    >
-                      {item}
-                    </span>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">{t("filterRegion")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {facets.region.map((item) => (
+                      <Badge
+                        key={item}
+                        variant="outline"
+                        className="border-border/70 text-muted-foreground"
+                      >
+                        {item}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-[#3f372f]">{t("filterLanguage")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {facets.language.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-[#dbcdbf] px-3 py-1 text-xs text-[#4d4339]"
-                    >
-                      {item}
-                    </span>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">{t("filterLanguage")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {facets.language.map((item) => (
+                      <Badge
+                        key={item}
+                        variant="outline"
+                        className="border-border/70 text-muted-foreground"
+                      >
+                        {item}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-[#3f372f]">{t("filterCollection")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {facets.collection.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-[#dbcdbf] px-3 py-1 text-xs text-[#4d4339]"
-                    >
-                      {item}
-                    </span>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">{t("filterCollection")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {facets.collection.map((item) => (
+                      <Badge
+                        key={item}
+                        variant="outline"
+                        className="border-border/70 text-muted-foreground"
+                      >
+                        {item}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-[#3f372f]">{t("filterVersion")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {facets.version.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-[#dbcdbf] px-3 py-1 text-xs text-[#4d4339]"
-                    >
-                      {item}
-                    </span>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">{t("filterVersion")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {facets.version.map((item) => (
+                      <Badge
+                        key={item}
+                        variant="outline"
+                        className="border-border/70 text-muted-foreground"
+                      >
+                        {item}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-[#3f372f]">{t("filterTags")}</p>
-                <div className="flex flex-wrap gap-2">
-                  {facets.focus.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-[#dbcdbf] px-3 py-1 text-xs text-[#4d4339]"
-                    >
-                      {item}
-                    </span>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold">{t("filterTags")}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {facets.focus.map((item) => (
+                      <Badge
+                        key={item}
+                        variant="outline"
+                        className="border-border/70 text-muted-foreground"
+                      >
+                        {item}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </aside>
 
           <div className="space-y-8">
-            <section className="rounded-3xl border border-[#e1d5c7] bg-white/70 p-6 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[#6a5b4d]">
-                {t("statsTitle")}
-              </h2>
-              <p className="mt-2 text-sm text-[#6a5b4d]">{t("statsDescription")}</p>
-              <div className="mt-5 grid gap-4 sm:grid-cols-4">
-                {[
-                  { label: t("statAuthors"), value: "38" },
-                  { label: t("statWorks"), value: "112" },
-                  { label: t("statPassages"), value: "1,204" },
-                  { label: t("statPeriods"), value: "5" },
-                ].map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-2xl border border-[#dbcdbf] bg-[#fdfbf7] p-4 text-center"
-                  >
-                    <p className="text-2xl font-semibold text-[#1f1b16]">{item.value}</p>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[#7a6b5c]">
-                      {item.label}
-                    </p>
-                  </div>
-                ))}
-              </div>
+            <section>
+              <Card className="rounded-3xl bg-card/70">
+                <CardHeader>
+                  <CardTitle className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    {t("statsTitle")}
+                  </CardTitle>
+                  <CardDescription>{t("statsDescription")}</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-4">
+                  {[
+                    { label: t("statAuthors"), value: "38" },
+                    { label: t("statWorks"), value: "112" },
+                    { label: t("statPassages"), value: "1,204" },
+                    { label: t("statPeriods"), value: "5" },
+                  ].map((item) => (
+                    <Card key={item.label} className="rounded-2xl bg-background/80">
+                      <CardContent className="p-4 text-center">
+                        <p className="text-2xl font-semibold text-foreground">
+                          {item.value}
+                        </p>
+                        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                          {item.label}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </CardContent>
+              </Card>
             </section>
 
             <section className="space-y-4">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[#6a5b4d]">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 {t("resultsTitle")}
               </h2>
               <div className="space-y-4">
                 {results.map((result) => (
-                  <article
+                  <Card
                     key={result.id}
-                    className="rounded-3xl border border-[#e1d5c7] bg-white/80 p-6 shadow-sm transition hover:translate-y-[-2px] hover:shadow-md"
+                    className="rounded-3xl bg-card/80 transition hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-[#7a6b5c]">
-                      <span className="rounded-full bg-[#1f1b16] px-3 py-1 text-xs font-semibold text-[#f5efe6]">
-                        {result.type}
-                      </span>
-                      <span>{result.period}</span>
-                      <span>{result.region}</span>
-                      <span>{result.version}</span>
-                      <span>{result.score}</span>
-                    </div>
-                    <h3 className="mt-4 text-xl font-semibold text-[#1f1b16]">
-                      {result.title}
-                    </h3>
-                    <p className="mt-2 text-sm text-[#6a5b4d]">
-                      {result.author} • {result.work}
-                    </p>
-                    <p className="mt-4 text-sm leading-6 text-[#4d4339]">
-                      {result.snippet}
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {result.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full border border-[#dbcdbf] px-3 py-1 text-xs text-[#4d4339]"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="mt-5 flex flex-wrap gap-3 text-sm">
-                      <button className="rounded-full bg-[#1f1b16] px-4 py-2 font-semibold text-[#f5efe6]">
-                        {t("openPassage")}
-                      </button>
-                      <button className="rounded-full border border-[#d8c9b9] px-4 py-2 text-[#4d4339]">
-                        {t("viewWork")}
-                      </button>
-                    </div>
-                  </article>
+                    <CardHeader className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                        <Badge className="rounded-full">{result.type}</Badge>
+                        <span>{result.period}</span>
+                        <span>{result.region}</span>
+                        <span>{result.version}</span>
+                        <span>{result.score}</span>
+                      </div>
+                      <CardTitle className="text-xl">{result.title}</CardTitle>
+                      <CardDescription className="text-sm">
+                        {result.author} - {result.work}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-sm leading-6 text-foreground/80">
+                        {result.snippet}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {result.tags.map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="outline"
+                            className="border-border/70 text-muted-foreground"
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-3 text-sm">
+                        <Button className="rounded-full">{t("openPassage")}</Button>
+                        <Button variant="outline" className="rounded-full">
+                          {t("viewWork")}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             </section>
 
-            <section className="rounded-3xl border border-[#e1d5c7] bg-white/70 p-6 shadow-sm">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[#6a5b4d]">
-                {t("relatedTitle")}
-              </h2>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {[t("relatedOne"), t("relatedTwo"), t("relatedThree")].map((item) => (
-                  <div
-                    key={item}
-                    className="rounded-2xl border border-[#dbcdbf] bg-[#fdfbf7] px-4 py-3 text-sm font-semibold text-[#4d4339]"
-                  >
-                    {item}
-                  </div>
-                ))}
-              </div>
+            <section>
+              <Card className="rounded-3xl bg-card/70">
+                <CardHeader>
+                  <CardTitle className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                    {t("relatedTitle")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-3 sm:grid-cols-3">
+                  {[t("relatedOne"), t("relatedTwo"), t("relatedThree")].map(
+                    (item) => (
+                      <Card key={item} className="rounded-2xl bg-background/80">
+                        <CardContent className="px-4 py-3 text-sm font-semibold text-foreground/80">
+                          {item}
+                        </CardContent>
+                      </Card>
+                    )
+                  )}
+                </CardContent>
+              </Card>
             </section>
           </div>
         </section>

@@ -1,21 +1,74 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5efe6;
+  --foreground: #1f1b16;
+  --card: #fbf7f0;
+  --card-foreground: #1f1b16;
+  --popover: #fbf7f0;
+  --popover-foreground: #1f1b16;
+  --primary: #1f1b16;
+  --primary-foreground: #f5efe6;
+  --secondary: #eadfce;
+  --secondary-foreground: #1f1b16;
+  --muted: #efe6da;
+  --muted-foreground: #6a5b4d;
+  --accent: #93b8b0;
+  --accent-foreground: #1f1b16;
+  --destructive: #b4452f;
+  --destructive-foreground: #fff7f1;
+  --border: #e1d5c7;
+  --input: #d8c9b9;
+  --ring: #93b8b0;
+  --radius: 1.25rem;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius: var(--radius);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #171512;
+    --foreground: #f3eee7;
+    --card: #201d18;
+    --card-foreground: #f3eee7;
+    --popover: #201d18;
+    --popover-foreground: #f3eee7;
+    --primary: #f3eee7;
+    --primary-foreground: #1f1b16;
+    --secondary: #2a261f;
+    --secondary-foreground: #f3eee7;
+    --muted: #2e2a23;
+    --muted-foreground: #b5a89b;
+    --accent: #6ea197;
+    --accent-foreground: #11100d;
+    --destructive: #d86a55;
+    --destructive-foreground: #140c0a;
+    --border: #342f27;
+    --input: #3b352c;
+    --ring: #6ea197;
   }
 }
 
