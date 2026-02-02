@@ -18,7 +18,8 @@ RUN corepack enable \
 
 # Install dependencies first for better layer caching
 # Supports both lockfile-present and lockfile-absent states
-COPY apps/frontend/package.json apps/frontend/pnpm-lock.yaml* /app/
+# Include pnpm-workspace.yaml so build approvals are honored.
+COPY apps/frontend/package.json apps/frontend/pnpm-lock.yaml* apps/frontend/pnpm-workspace.yaml /app/
 
 RUN pnpm install
 
