@@ -1,102 +1,29 @@
 # OpenITI Discovery
 
-A local-first, extensible full-text and semantic discovery platform for the **OpenITI RELEASE** corpus of Islamicate texts in **Arabic**, **Persian**, and O**ttoman Turkish**.
-
-The project provides hybrid lexical + semantic search, metadata-driven filtering, and passage-level navigation over the entire OpenITI corpus, with an architecture designed to scale from local research use to public deployment.
+A local-first discovery stack for the OpenITI RELEASE corpus, combining full-text (BM25) search with vector search and a lightweight reading UI. The repo is structured for Docker-first development and can scale toward hosted deployment.
 
 ---
 
-## Project Goals
+## Current State (Feb 2, 2026)
 
-* Full-corpus indexing of the OpenITI RELEASE repository
-* High-quality full-text search for Arabic-script languages
-* Semantic (embedding-based) concept search
-* Passage-level retrieval with jump-to-context reading
-* Version-aware text discovery (PRI vs alternate versions)
-* Support for phrase reuse and bibliographic research workflows
-* Local development via Docker Compose, with a clear path to hosting
-
----
-
-## Corpus
-
-This project targets the [OpenITI RELEASE](https://github.com/OpenITI/RELEASE) repository.
-
-The corpus consists of:
-
-* Thousands of works and versions
-* Billions of words
-* Structured OpenITI mARkdown
-* Rich metadata (authors, dates, genres, collections, etc.)
-
-The corpus itself is not included in this repository. 
-
-> You must clone it separately and mount it into the stack.
+* FastAPI API with health and search endpoints
+* BM25 search in OpenSearch, vector search in Qdrant, and a simple hybrid fusion mode
+* One-shot ingest runner that discovers OpenITI texts, chunks them, and indexes BM25 + embeddings
+* Next.js frontend with landing and search UI (currently using mock data; API wiring is pending)
 
 ---
 
 ## Architecture Overview
 
-### Core Components
-
-| Component            | Purpose                                               |
-| -------------------- | ----------------------------------------------------- |
-| **PostgreSQL 18**    | Canonical metadata, works, versions, passage pointers |
-| **OpenSearch 3**     | Lexical (BM25) search, filtering, highlighting        |
-| **Qdrant**           | Vector search for semantic retrieval                  |
-| **FastAPI**          | Search orchestration, hybrid ranking, API             |
-| **Next.js (≥16)**    | User interface (search + reading views)               |
-| **Redis** (optional) | Caching, ingest checkpoints                           |
-| **Docker Compose**   | Local orchestration                                   |
-
----
-
-## Data Model (Conceptual)
-
-```text
-Author
- └── Work
-      └── Version (PRI or alternate)
-            └── Passage / Chunk (~300 words)
-```
-
-Passages are the primary retrieval unit for:
-
-* search results
-* semantic similarity
-* reuse detection
-* reading navigation
-
----
-
-## Search Strategy
-
-### Hybrid Retrieval (Default)
-
-* Lexical search (BM25) via OpenSearch
-* Semantic search (embeddings) via Qdrant
-* Results fused at query time
-
-This supports:
-
-* concept search
-* named entity search
-* phrase and formulaic reuse
-* bibliographic hunting
-
-### Arabic-Script Optimization
-
-Custom OpenSearch analyzers are used to handle:
-
-* Arabic orthographic variation
-* Persian letter normalization
-* Ottoman Turkish (Arabic-script) text
-* Optional ICU Unicode folding
-
-Indexing uses **multi-field mappings** to balance recall and precision:
-
-* normalized fields for general search
-* no-stem / exact fields for names and phrases
+| Component | Purpose | Version | Notes |
+| --- | --- | --- | --- |
+| PostgreSQL | Canonical metadata, works, versions, chunks | 18 | In Docker Compose |
+| OpenSearch | Lexical search, filters, highlights | 3.4.0 | ICU analysis plugin baked in |
+| Qdrant | Vector search | 1.16 | HTTP + gRPC exposed |
+| FastAPI | API + ingest runtime | Python 3.12 | Uvicorn dev server |
+| Next.js | Frontend UI | 16.1.4 | React 19.2.3 |
+| Redis | Optional cache | 8 | Profile `cache` |
+| Docker Compose | Local orchestration | - | Profiles: `dashboards`, `cache`, `ingest` |
 
 ---
 
@@ -104,39 +31,34 @@ Indexing uses **multi-field mappings** to balance recall and precision:
 
 ```text
 .
-├── apps/
-│   ├── api/                # FastAPI backend
-│   └── frontend/           # Next.js frontend
-├── opensearch/
-│   └── templates/          # Index templates
-├── data/
-│   └── artifacts/          # Derived data, checkpoints
-├── docker-compose.yml
-├── README.md
-└── RELEASE/                # OpenITI corpus (git submodule or local clone)
+|-- apps/
+|   |-- api/                 # FastAPI backend + ingest runner
+|   |-- frontend/            # Next.js frontend
+|-- opensearch/
+|   |-- templates/           # Index templates
+|-- data/
+|   |-- artifacts/           # Derived data, checkpoints
+|-- docker-compose.yml
+|-- README.md
+|-- RELEASE/                 # OpenITI corpus (clone or submodule)
 ```
 
 ---
 
 ## Requirements
 
-### Host System
-
 * Docker Engine >= 29.x
 * Docker Compose plugin
-* Recommended: >= 32GB RAM for full corpus indexing
+* Recommended: 32 GB RAM for full corpus ingest
 * Optional: NVIDIA GPU for faster embedding generation
 
-### External Dependencies 
-
-* OpenITI RELEASE corpus (cloned locally)
-* Internet access for embedding model download (once)
+If you run the frontend locally outside Docker, use Node 20 + pnpm.
 
 ---
 
 ## Getting Started
 
-### 1. Clone Repository
+### 1. Clone Repository and Corpus
 
 ```bash
 git clone https://github.com/waynegraham/openiti-discovery.git
@@ -144,15 +66,15 @@ cd openiti-discovery
 git clone https://github.com/OpenITI/RELEASE.git
 ```
 
-### 2. Configure Environment
+The OpenITI RELEASE repo must exist at `./RELEASE` so it can be mounted into containers.
 
-Copy the example env file and adjust paths as needed:
+### 2. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-At minimum, set the path to your local RELEASE clone if your compose file expects it.
+Set `OPENSEARCH_INITIAL_ADMIN_PASSWORD` and any ingest controls you want to override.
 
 ### 3. Start Core Services
 
@@ -160,36 +82,28 @@ At minimum, set the path to your local RELEASE clone if your compose file expect
 docker compose up -d
 ```
 
+Optional profiles:
+
+* Dashboards: `docker compose --profile dashboards up -d`
+* Redis cache: `docker compose --profile cache up -d`
+
 ### 4. Run Database Migrations
 
 ```bash
 docker compose exec api alembic upgrade head
 ```
 
-### 5. Local Interfaces and URLs
+### 5. Create OpenSearch Indices
 
-Once the stack is running, these are the default local endpoints:
-
-* Frontend (Next.js): http://localhost:3000
-* API (FastAPI): http://localhost:8000
-* FastAPI docs (Swagger): http://localhost:8000/docs
-* FastAPI docs (ReDoc): http://localhost:8000/redoc
-* OpenSearch API: http://localhost:9200
-* OpenSearch Dashboards: http://localhost:5601 (requires `dashboards` profile)
-* Qdrant API: http://localhost:6333
-* Qdrant UI: http://localhost:6333/dashboard
-
-### 6. Create OpenSearch Indices
-
-Apply the index template (once):
+Apply the template:
 
 ```bash
-curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template_v1 \
+curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template \
   -H "Content-Type: application/json" \
   -d @opensearch/templates/openiti_chunks_template.json
 ```
 
-Create the initial index:
+Create an initial index (the template adds the `openiti_chunks` alias automatically):
 
 ```bash
 curl -X PUT http://localhost:9200/openiti_chunks_v1
@@ -199,91 +113,71 @@ curl -X PUT http://localhost:9200/openiti_chunks_v1
 
 ## Ingesting the Corpus
 
-The ingestion pipeline is run as a one-shot container.
-
-### Full Corpus Ingest
+The ingestion pipeline runs as a one-shot container that uses the API image.
 
 ```bash
 docker compose --profile ingest run --rm ingest
 ```
 
-### Development/Subset Ingest
+Ingest behavior is controlled via environment variables (see `.env.example` and `docker-compose.yml`):
 
-Control ingest behavior via environment variables:
-
-```env
-INGEST_MODE=subset
-INGEST_ONLY_PRI=true
-INGEST_LANGS=ara,fas
-INGEST_WORK_LIMIT=500
-EMBEDDING_DEVICE=cpu
-```
-
-This allows fast iteration without indexing the full corpus.
+* `INGEST_MODE`: reserved for future runners (currently unused)
+* `INGEST_ONLY_PRI`: `true` or `false`
+* `INGEST_LANGS`: comma-separated tags (currently the ingest runner only processes `ara`)
+* `INGEST_WORK_LIMIT`: limit number of works (default is 200 when unset)
+* `CHUNK_TARGET_WORDS`: default 300
+* `EMBEDDINGS_ENABLED`: `true` or `false`
+* `EMBEDDING_DEVICE`: `cpu` or `cuda`
+* `EMBEDDING_MODEL`: default multilingual MiniLM
 
 ---
 
-## Embeddings
+## API Endpoints (Current)
 
-* Embeddings are generated per passage
-* GPU acceleration is supported but optional
-* CPU-only mode is supported for development
-* Vector storage is handled by Qdrant
+* `GET /health` -> service health summary
+* `GET /search` -> query OpenSearch/Qdrant
+* `GET /chunks/{chunk_id}` -> chunk with neighbors
 
-Embedding configuration is controlled via environment variables.
+Search modes:
+
+* `mode=bm25` (default)
+* `mode=vector` (requires `vector` parameter)
+* `mode=hybrid` (requires `vector` parameter)
+
+The vector parameter is a temporary hook until a server-side embedding endpoint is added.
 
 ---
 
-## User Iterface
+## Local URLs
 
-The frontend provides:
-
-* Unified search box (hybrid by default)
-* Faceted filtering (author, date, language, version)
-* Snippet view with highlighted matches
-* Passage-level jump-to-context reading
-* Version awareness (`PRI` vs alternates)
-
-Full document rendering is supported incrementally via passage navigation.
+* Frontend: http://localhost:3000
+* API: http://localhost:8000
+* API docs (Swagger): http://localhost:8000/docs
+* API docs (ReDoc): http://localhost:8000/redoc
+* OpenSearch API: http://localhost:9200
+* OpenSearch Dashboards: http://localhost:5601 (profile `dashboards`)
+* Qdrant API: http://localhost:6333
+* Qdrant UI: http://localhost:6333/dashboard
 
 ---
 
 ## Index Versioning
 
-Indices are versioned:
-
-```python
-openiti_chunks_v1
-openiti_chunks_v2
-...
-```
-
-A stable alias (`openiti_chunks`) always points to the active index, enabling:
-
-* safe reindexing
-* analyzer changes
-* schema evolution
+Indices follow `openiti_chunks_v*`. The template assigns the `openiti_chunks` alias to each created index, enabling safe reindexing and schema changes.
 
 ---
 
 ## Licensing
 
-The OpenITI RELEASE dataset is licensed under **CC BY-NC-SA 4.0**. This project contains **no corpus data** and does not alter the original licensing terms.
+The OpenITI RELEASE dataset is licensed under CC BY-NC-SA 4.0. This project does not include corpus data and does not alter the original licensing terms.
 
-You are responsible for complying with OpenITI’s license when deploying or redistributing derived indexes.
+You are responsible for complying with the OpenITI license when deploying or redistributing derived indexes.
 
 ---
 
 ## Status
 
-This project is under active development.
-
-Expect:
-
-* schema iteration
-* analyzer tuning
-* incremental feature expansion (reuse detection, entity extraction)
-* things to break
+Active development. Expect iteration in schema, analyzers, ingest logic, and UI wiring.
 
 ---
 
@@ -291,4 +185,4 @@ Expect:
 
 * OpenITI Project and contributors
 * KITAB / AKU initiatives
-* OpenSearch, Qdrant, PostgreSQL communities
+* OpenSearch, Qdrant, and PostgreSQL communities
