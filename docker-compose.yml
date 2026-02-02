@@ -159,7 +159,7 @@ services:
     depends_on:
       - api
     networks: [openiti_net]
-    command: ["npm", "run", "dev"]
+    command: ["pnpm", "dev"]
 
   ingest:
     # One-shot ingestion job container.
