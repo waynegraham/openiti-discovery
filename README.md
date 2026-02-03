@@ -117,6 +117,7 @@ The ingestion pipeline runs as a one-shot container that uses the API image.
 
 ```bash
 docker compose --profile ingest run --rm ingest
+docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true EMBEDDING_DEVICE=cuda -e ingest
 ```
 
 Ingest behavior is controlled via environment variables (see `.env.example` and `docker-compose.yml`):

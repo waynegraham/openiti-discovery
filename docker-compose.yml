@@ -103,6 +103,8 @@ services:
       context: .
       dockerfile: ./apps/api/Dockerfile
     container_name: openiti_api
+    env_file:
+      - .env
     environment:
       # Database
       DATABASE_URL: postgresql+psycopg://openiti:openiti@postgres:5432/openiti
@@ -149,6 +151,8 @@ services:
       context: .
       dockerfile: ./apps/frontend/Dockerfile
     container_name: openiti_frontend
+    env_file:
+      - .env
     environment:
       # Public URL the browser will use
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
@@ -168,6 +172,8 @@ services:
       context: .
       dockerfile: ./apps/api/Dockerfile
     container_name: openiti_ingest
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+psycopg://openiti:openiti@postgres:5432/openiti
       OPENSEARCH_URL: http://opensearch:9200
