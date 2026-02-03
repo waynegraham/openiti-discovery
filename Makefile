@@ -29,7 +29,8 @@ endef
 
 .PHONY: help up down reset logs ps \
         wait migrate template index alias status \
-        init init-no-data ingest gpu-ingest
+        init init-no-data in
+		gest gpu-ingest
 
 help:
 	@echo "Targets:"
@@ -137,7 +138,7 @@ gpu-ingest:
 	@echo "  INGEST_LANGS=$(INGEST_LANGS)"
 	@echo "  EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED)"
 	@echo "  EMBEDDING_DEVICE=cuda"
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm \
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm --gpus all \
 	  -e INGEST_MODE=subset \
 	  -e INGEST_WORK_LIMIT=$(INGEST_WORK_LIMIT) \
 	  -e INGEST_ONLY_PRI=$(INGEST_ONLY_PRI) \

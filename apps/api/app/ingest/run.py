@@ -393,6 +393,34 @@ def upsert_chunks_batch(engine: Engine, rows: List[dict]) -> None:
     with engine.begin() as conn:
         conn.execute(sql, rows)
 
+def set_chunk_links(engine: Engine, version_id: str) -> None:
+    """
+    Populate prev/next links after all chunks for a version are inserted.
+    This avoids FK violations when batch boundaries split adjacent chunks.
+    """
+    sql = text(
+        """
+        UPDATE chunks c
+        SET
+          prev_chunk_id = (
+            SELECT p.chunk_id
+            FROM chunks p
+            WHERE p.version_id = c.version_id
+              AND p.chunk_index = c.chunk_index - 1
+          ),
+          next_chunk_id = (
+            SELECT n.chunk_id
+            FROM chunks n
+            WHERE n.version_id = c.version_id
+              AND n.chunk_index = c.chunk_index + 1
+          ),
+          updated_at = now()
+        WHERE c.version_id = :version_id
+        """
+    )
+    with engine.begin() as conn:
+        conn.execute(sql, {"version_id": version_id})
+
 
 # ---------------------------
 # OpenSearch bulk indexing
@@ -410,12 +438,8 @@ def os_bulk_index(docs: List[dict]) -> None:
         lines.append(json.dumps(d, ensure_ascii=False))
     payload = "\n".join(lines) + "\n"
 
-    resp = client.transport.perform_request(
-        method="POST",
-        url="/_bulk",
-        body=payload,
-        headers={"Content-Type": "application/x-ndjson"},
-    )
+    # Use client.bulk to avoid duplicate Content-Type headers
+    resp = client.bulk(body=payload)
     if resp.get("errors"):
         # Pull out a small sample of failures
         items = resp.get("items", [])
@@ -451,6 +475,14 @@ def ensure_qdrant_collection(model: SentenceTransformer, collection_name: str) -
 def qdrant_upsert(points: List[dict]) -> None:
     q = get_qdrant()
     q.upsert(collection_name=settings.QDRANT_COLLECTION, points=points)
+
+def qdrant_point_id(chunk_id: str) -> int:
+    """
+    Qdrant point IDs must be an unsigned int or UUID.
+    Use a stable unsigned 64-bit int derived from the chunk_id.
+    """
+    digest = hashlib.sha256(chunk_id.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big", signed=False)
 
 
 # ---------------------------
@@ -556,7 +588,6 @@ def run() -> None:
             os_docs: List[dict] = []
 
             # Create chunk rows in memory, then batch insert/index
-            last_chunk_id = None
             chunks_for_vectors: List[Tuple[str, str, dict]] = []  # (chunk_id, text_norm, payload)
 
             for chunk_index, start_word, wslice in chunk_words(words, CHUNK_TARGET_WORDS, CHUNK_MAX_OVERLAP_WORDS):
@@ -579,18 +610,12 @@ def run() -> None:
                     "text_norm": text_norm,
                     "word_count": len(wslice),
                     "token_count": None,
-                    "prev_chunk_id": last_chunk_id,
+                    "prev_chunk_id": None,
                     "next_chunk_id": None,
                     "metadata": "{}",
                 }
 
-                # update previous chunk's next pointer (in memory; will persist later)
-                if last_chunk_id is not None:
-                    # patch the prior row's next_chunk_id
-                    chunk_rows[-1]["next_chunk_id"] = chunk_id
-
                 chunk_rows.append(row)
-                last_chunk_id = chunk_id
 
                 os_docs.append(
                     {
@@ -641,6 +666,8 @@ def run() -> None:
                     _embed_and_upsert(model, chunks_for_vectors)
                     set_ingest_state(engine, t.version_id, "embedded", last_chunk_index=chunk_rows[-1]["chunk_index"])
 
+            # Populate prev/next links after all chunks for this version exist.
+            set_chunk_links(engine, t.version_id)
             set_ingest_state(engine, t.version_id, "complete")
 
         except Exception as e:
@@ -670,7 +697,7 @@ def _embed_and_upsert(model: SentenceTransformer, chunks_for_vectors: List[Tuple
     for i, cid in enumerate(ids):
         points.append(
             {
-                "id": cid,  # stable id in qdrant
+                "id": qdrant_point_id(cid),
                 "vector": vectors[i].tolist(),
                 "payload": payloads[i],
             }

@@ -130,10 +130,10 @@ docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true -e EMBEDDING
 
 ### GPU Ingest (Windows/Linux + NVIDIA)
 
-Use the CUDA-enabled image and profile:
+Use the CUDA-enabled image and profile (requires Docker Compose with `--gpus` support):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm ingest_cuda
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm --gpus all ingest_cuda
 ```
 
 If you want auto-detection, set `EMBEDDING_DEVICE=auto` in `.env` or pass it via `-e`.

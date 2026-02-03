@@ -10,6 +10,18 @@ docker compose --profile ingest run --rm ingest
 
 
 docker compose --profile ingest run --rm \
-  -e INGEST_WORK_LIMIT=1 \
-  -e EMBEDDINGS_ENABLED=false \
+  -e INGEST_WORK_LIMIT=500 \
+  -e EMBEDDINGS_ENABLED=true \
+  -e INGEST_MODE=subset \
+  -e INGEST_ONLY_PRI=true  \
+  -e EMBEDDING_DEVICE=cuda \
   ingest
+
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm \
+  -e INGEST_MODE=subset \
+  -e INGEST_WORK_LIMIT=200 \
+  -e INGEST_ONLY_PRI=true \
+  -e INGEST_LANGS=ara \
+  -e EMBEDDINGS_ENABLED=true \
+  -e EMBEDDING_DEVICE=cuda \
+  ingest_cuda

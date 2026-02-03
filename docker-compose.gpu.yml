@@ -2,13 +2,11 @@ name: openiti-discovery
 
 services:
   api_cuda:
-    device_requests:
-      - driver: nvidia
-        count: 1
-        capabilities: ["gpu"]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
 
   ingest_cuda:
-    device_requests:
-      - driver: nvidia
-        count: 1
-        capabilities: ["gpu"]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
