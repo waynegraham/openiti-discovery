@@ -29,13 +29,14 @@ endef
 
 .PHONY: help up down reset logs ps \
         wait migrate template index alias status \
-        init init-no-data ingest
+        init init-no-data ingest gpu-ingest
 
 help:
 	@echo "Targets:"
 	@echo "  make init           - Start stack, run migrations, apply template, create index, run subset ingest"
 	@echo "  make init-no-data   - Same as init, but skip ingest"
 	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ara)"
+	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
 	@echo "  make migrate        - Run alembic upgrade head in api container"
 	@echo "  make template       - Apply OpenSearch index template"
 	@echo "  make index          - Create versioned OpenSearch index (and alias if in template)"
@@ -128,3 +129,19 @@ ingest:
 	  -e EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED) \
 	  -e EMBEDDING_DEVICE=$(EMBEDDING_DEVICE) \
 	  ingest
+
+gpu-ingest:
+	@echo "Running GPU ingest (subset) with:"
+	@echo "  INGEST_WORK_LIMIT=$(INGEST_WORK_LIMIT)"
+	@echo "  INGEST_ONLY_PRI=$(INGEST_ONLY_PRI)"
+	@echo "  INGEST_LANGS=$(INGEST_LANGS)"
+	@echo "  EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED)"
+	@echo "  EMBEDDING_DEVICE=cuda"
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm \
+	  -e INGEST_MODE=subset \
+	  -e INGEST_WORK_LIMIT=$(INGEST_WORK_LIMIT) \
+	  -e INGEST_ONLY_PRI=$(INGEST_ONLY_PRI) \
+	  -e INGEST_LANGS=$(INGEST_LANGS) \
+	  -e EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED) \
+	  -e EMBEDDING_DEVICE=cuda \
+	  ingest_cuda

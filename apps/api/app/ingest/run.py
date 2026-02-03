@@ -39,7 +39,7 @@ CHUNK_TARGET_WORDS = int(os.getenv("CHUNK_TARGET_WORDS", "300") or "300")
 CHUNK_MAX_OVERLAP_WORDS = int(os.getenv("CHUNK_MAX_OVERLAP_WORDS", "0") or "0")
 
 EMBEDDINGS_ENABLED = os.getenv("EMBEDDINGS_ENABLED", "true").lower() in ("1", "true", "yes")
-EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
+EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu").lower()
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "64") or "64")
 EMBEDDING_MODEL_ID = os.getenv(
     "EMBEDDING_MODEL",
@@ -457,6 +457,29 @@ def qdrant_upsert(points: List[dict]) -> None:
 # Runner
 # ---------------------------
 
+def resolve_embedding_device(requested: str) -> str:
+    requested = (requested or "cpu").lower()
+    if requested in ("auto", "cuda"):
+        try:
+            import torch  # local import to avoid import cost if embeddings disabled
+        except Exception as exc:
+            LOG.warning("CUDA check failed (%s). Falling back to CPU.", exc)
+            return "cpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        if requested == "cuda":
+            LOG.warning(
+                "EMBEDDING_DEVICE=cuda requested but CUDA is unavailable. "
+                "Falling back to CPU. If you expected GPU, use the CUDA image "
+                "and ensure NVIDIA drivers + container runtime are installed."
+            )
+        return "cpu"
+    if requested == "cpu":
+        return "cpu"
+    LOG.warning("Unknown EMBEDDING_DEVICE=%s; falling back to cpu.", requested)
+    return "cpu"
+
+
 def run() -> None:
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO"),
@@ -470,10 +493,12 @@ def run() -> None:
     ingest_settings_str = ", ".join(
         f"{k}={ingest_settings[k]}" for k in sorted(ingest_settings)
     ) or "none"
+    resolved_device = resolve_embedding_device(EMBEDDING_DEVICE) if EMBEDDINGS_ENABLED else "cpu"
     LOG.info(
-        "Ingest start: embeddings=%s device=%s; ingest_settings=%s",
+        "Ingest start: embeddings=%s device=%s (resolved=%s); ingest_settings=%s",
         "enabled" if EMBEDDINGS_ENABLED else "disabled",
         EMBEDDING_DEVICE,
+        resolved_device,
         ingest_settings_str,
     )
 
@@ -493,8 +518,8 @@ def run() -> None:
 
     model: SentenceTransformer | None = None
     if EMBEDDINGS_ENABLED:
-        LOG.info("Loading embedding model: %s (device=%s)", EMBEDDING_MODEL_ID, EMBEDDING_DEVICE)
-        model = SentenceTransformer(EMBEDDING_MODEL_ID, device=EMBEDDING_DEVICE)
+        LOG.info("Loading embedding model: %s (device=%s)", EMBEDDING_MODEL_ID, resolved_device)
+        model = SentenceTransformer(EMBEDDING_MODEL_ID, device=resolved_device)
         ensure_qdrant_collection(model, settings.QDRANT_COLLECTION)
 
     # Process each text end-to-end

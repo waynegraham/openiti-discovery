@@ -50,7 +50,15 @@ A local-first discovery stack for the OpenITI RELEASE corpus, combining full-tex
 * Docker Engine >= 29.x
 * Docker Compose plugin
 * Recommended: 32 GB RAM for full corpus ingest
-* Optional: NVIDIA GPU for faster embedding generation
+* Optional: NVIDIA GPU for faster embedding generation (Windows/Linux only)
+
+### Optional CUDA Support (Windows/Linux)
+
+To use GPU embeddings:
+
+* Windows: Docker Desktop with WSL2 GPU support and NVIDIA drivers installed.
+* Linux: NVIDIA drivers + NVIDIA Container Toolkit.
+* macOS: CUDA is not supported; use CPU mode.
 
 If you run the frontend locally outside Docker, use Node 20 + pnpm.
 
@@ -117,8 +125,18 @@ The ingestion pipeline runs as a one-shot container that uses the API image.
 
 ```bash
 docker compose --profile ingest run --rm ingest
-docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true EMBEDDING_DEVICE=cuda -e ingest
+docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true -e EMBEDDING_DEVICE=cpu ingest
 ```
+
+### GPU Ingest (Windows/Linux + NVIDIA)
+
+Use the CUDA-enabled image and profile:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm ingest_cuda
+```
+
+If you want auto-detection, set `EMBEDDING_DEVICE=auto` in `.env` or pass it via `-e`.
 
 Ingest behavior is controlled via environment variables (see `.env.example` and `docker-compose.yml`):
 

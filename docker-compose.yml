@@ -145,6 +145,54 @@ services:
     # If you enabled redis via profile cache, the api can still start without it;
     # your code should treat redis as optional unless you require it.
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  api_cuda:
+    # CUDA-enabled API (for GPU embeddings)
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile.cuda
+    container_name: openiti_api_cuda
+    env_file:
+      - .env
+    environment:
+      # Database
+      DATABASE_URL: postgresql+psycopg://openiti:openiti@postgres:5432/openiti
+
+      # OpenSearch
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX_CHUNKS: openiti_chunks
+
+      # Qdrant
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: openiti_chunks
+
+      # Optional cache
+      REDIS_URL: redis://redis:6379/0
+
+      # Corpus location inside container
+      CORPUS_ROOT: /corpus/RELEASE
+
+      # Embeddings config
+      EMBEDDING_DEVICE: cuda         # cpu|cuda|auto
+      EMBEDDING_BATCH_SIZE: "64"     # tune
+      EMBEDDING_MODEL: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      HF_HOME: /hf_cache
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the corpus repo (cloned locally) read-only
+      - ./RELEASE:/corpus/RELEASE:ro
+      # Optional: store derived artifacts (chunk caches, logs, checkpoints)
+      - ./data/artifacts:/artifacts
+      # Shared Hugging Face cache to avoid re-downloading models
+      - hf_cache:/hf_cache
+    depends_on:
+      - postgres
+      - opensearch
+      - qdrant
+    networks: [openiti_net]
+    profiles: ["gpu"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     
   frontend:
     build:
@@ -203,6 +251,46 @@ services:
       - qdrant
     networks: [openiti_net]
     profiles: ["ingest"]
+    command: ["python", "-m", "app.ingest.run"]
+
+  ingest_cuda:
+    # One-shot ingestion job container (CUDA-enabled).
+    # Uses the same image as api_cuda so you don't duplicate dependencies.
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile.cuda
+    container_name: openiti_ingest_cuda
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://openiti:openiti@postgres:5432/openiti
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX_CHUNKS: openiti_chunks
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: openiti_chunks
+      REDIS_URL: redis://redis:6379/0
+      CORPUS_ROOT: /corpus/RELEASE
+
+      # Ingest controls
+      INGEST_MODE: "full"            # full|subset
+      INGEST_ONLY_PRI: "true"        # true|false
+      INGEST_LANGS: "ara,fas,ota"    # ISO-ish tags you'll enforce in code
+      INGEST_WORK_LIMIT: "0"         # 0 = no limit; set N for dev
+      CHUNK_TARGET_WORDS: "300"
+      EMBEDDING_DEVICE: cuda         # cpu|cuda|auto
+      EMBEDDING_BATCH_SIZE: "64"
+      EMBEDDING_MODEL: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      HF_HOME: /hf_cache
+    volumes:
+      - ./RELEASE:/corpus/RELEASE:ro
+      - ./data/artifacts:/artifacts
+      - hf_cache:/hf_cache
+    depends_on:
+      - postgres
+      - opensearch
+      - qdrant
+    networks: [openiti_net]
+    profiles: ["gpu"]
     command: ["python", "-m", "app.ingest.run"]
 
 networks:

@@ -7,3 +7,9 @@
 
 docker compose --profile ingest run --rm ingest
 
+
+
+docker compose --profile ingest run --rm \
+  -e INGEST_WORK_LIMIT=1 \
+  -e EMBEDDINGS_ENABLED=false \
+  ingest

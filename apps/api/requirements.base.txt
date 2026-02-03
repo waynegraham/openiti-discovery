@@ -1,0 +1,59 @@
+# ----------------------------
+# Core API
+# ----------------------------
+fastapi>=0.128
+uvicorn[standard]>=0.40
+
+# ----------------------------
+# Database (PostgreSQL)
+# ----------------------------
+SQLAlchemy>=2.0
+psycopg[binary]>=3.3
+alembic>=1.18
+
+# ----------------------------
+# Configuration / Utilities
+# ----------------------------
+python-dotenv>=1.2
+pydantic>=2.12
+pydantic-settings>=2.12
+
+# ----------------------------
+# OpenSearch (BM25 search)
+# ----------------------------
+opensearch-py>=3.1
+
+# ----------------------------
+# Vector search (Qdrant)
+# ----------------------------
+qdrant-client>=1.16
+
+# ----------------------------
+# Text processing / ingestion
+# ----------------------------
+tqdm>=4.67
+regex>=2026.1.15
+langdetect>=1.0.9
+
+# ----------------------------
+# Embeddings / ML
+# ----------------------------
+transformers>=4.57
+sentence-transformers>=5.2
+
+# ----------------------------
+# Async + HTTP
+# ----------------------------
+httpx>=0.28
+anyio>=4.12
+
+# ----------------------------
+# Optional performance helpers
+# ----------------------------
+orjson>=3.11
+ujson>=5.11
+
+# ----------------------------
+# Logging / Debugging
+# ----------------------------
+structlog>=25.5

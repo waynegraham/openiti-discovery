@@ -1,0 +1,14 @@
+name: openiti-discovery
+
+services:
+  api_cuda:
+    device_requests:
+      - driver: nvidia
+        count: 1
+        capabilities: ["gpu"]
+
+  ingest_cuda:
+    device_requests:
+      - driver: nvidia
+        count: 1
+        capabilities: ["gpu"]

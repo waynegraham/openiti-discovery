@@ -1,13 +1,12 @@
-# apps/api/Dockerfile
+# apps/api/Dockerfile.cuda
 #
-# CPU-first image for:
+# CUDA-capable image for:
 # - FastAPI API service
-# - One-shot ingest job
-# - Alembic migrations (run inside container)
+# - One-shot ingest job (GPU embeddings)
 #
-# GPU embeddings are handled via a separate CUDA-based image later (recommended).
+# Requires NVIDIA Container Toolkit (Linux) or Docker Desktop GPU support (Windows).
 
-FROM python:3.12-slim AS base
+FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -29,9 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Python dependencies first for better layer caching
 COPY apps/api/requirements.base.txt /app/requirements.base.txt
-COPY apps/api/requirements.cpu.txt /app/requirements.cpu.txt
+COPY apps/api/requirements.cuda.txt /app/requirements.cuda.txt
 RUN python -m pip install --upgrade pip \
-    && pip install -r /app/requirements.cpu.txt
+    && pip install -r /app/requirements.cuda.txt
 
 # Copy the API application code (including alembic files)
 COPY apps/api /app/apps/api
