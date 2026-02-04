@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import csv
 import json
 import time
 import hashlib
@@ -50,6 +51,9 @@ EMBEDDING_MODEL_ID = os.getenv(
 # OpenSearch bulk sizing
 OS_BULK_BATCH = int(os.getenv("OPENSEARCH_BULK_BATCH", "500") or "500")
 
+# Curated tags (for faceting)
+CURATED_TAGS_PATH = os.getenv("CURATED_TAGS_PATH", "")
+
 
 # ---------------------------
 # Normalization (Arabic-script)
@@ -80,6 +84,142 @@ def normalize_arabic_script(s: str) -> str:
     # collapse whitespace
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+
+# ---------------------------
+# Metadata loading + facets
+# ---------------------------
+
+REGION_PRECEDENCE = ("born@", "resided@", "died@", "visited@")
+
+def _repo_root() -> Path:
+    # /app/apps/api/app/ingest/run.py -> /app
+    return Path(__file__).resolve().parents[4]
+
+
+def _normalize_repo_path(p: str) -> str:
+    p = (p or "").strip().replace("\\", "/")
+    while p.startswith("../"):
+        p = p[3:]
+    if p.startswith("./"):
+        p = p[2:]
+    return p
+
+
+def _load_curated_tags() -> set[str]:
+    if CURATED_TAGS_PATH:
+        path = Path(CURATED_TAGS_PATH)
+    else:
+        path = _repo_root() / "curated_tags.txt"
+    if not path.exists():
+        LOG.warning("Curated tags list not found at %s; tags facet will be empty.", path)
+        return set()
+    with path.open("r", encoding="utf-8") as f:
+        return {line.strip() for line in f if line.strip()}
+
+
+def _parse_int(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _ah_to_ce(ah: int) -> int:
+    # Approximate conversion; sufficient for display facet
+    return int(round(ah * 0.97023 + 621.57))
+
+
+def _extract_period(tags: list[str]) -> tuple[str | None, str | None]:
+    period_tag = next((t for t in tags if t.startswith("GAL@period-")), None)
+    if not period_tag:
+        return None, None
+    label = period_tag.replace("GAL@period-", "").replace("-", " ").strip()
+    return period_tag, label
+
+
+def _extract_region(tags: list[str]) -> list[str]:
+    for prefix in REGION_PRECEDENCE:
+        vals = []
+        for t in tags:
+            if t.startswith(prefix) and t.endswith("_RE"):
+                val = t[len(prefix):-3].strip()
+                if val:
+                    vals.append(val)
+        if vals:
+            return sorted(set(vals))
+    return []
+
+
+def _filter_curated_tags(tags: list[str], curated: set[str]) -> list[str]:
+    if not curated:
+        return []
+    return [t for t in tags if t in curated]
+
+
+def _version_label(status: str | None) -> str | None:
+    if not status:
+        return None
+    if status == "pri":
+        return "PRI"
+    if status == "sec":
+        return "ALT"
+    return status.upper()
+
+
+def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, dict], dict[str, dict]]:
+    csv_path = corpus_root / "OpenITI_metadata_2023-1-8.csv"
+    if not csv_path.exists():
+        LOG.warning("Metadata CSV not found at %s; skipping metadata enrichment.", csv_path)
+        return {}, {}
+
+    by_path: dict[str, dict] = {}
+    by_version: dict[str, dict] = {}
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            local_path = _normalize_repo_path(row.get("local_path") or "")
+            version_uri = (row.get("version_uri") or "").strip()
+            tags_raw = [t.strip() for t in (row.get("tags") or "").split(" :: ") if t.strip()]
+
+            period_tag, period_label = _extract_period(tags_raw)
+            region_vals = _extract_region(tags_raw)
+            curated = _filter_curated_tags(tags_raw, curated_tags)
+
+            date_ah = _parse_int(row.get("date"))
+            date_ce = _ah_to_ce(date_ah) if date_ah is not None else None
+
+            meta = {
+                "author_ar": (row.get("author_ar") or "").strip() or None,
+                "author_lat": (row.get("author_lat") or "").strip() or None,
+                "author_lat_shuhra": (row.get("author_lat_shuhra") or "").strip() or None,
+                "author_lat_full_name": (row.get("author_lat_full_name") or "").strip() or None,
+                "work_title_ar": (row.get("title_ar") or "").strip() or None,
+                "work_title_lat": (row.get("title_lat") or "").strip() or None,
+                "book": (row.get("book") or "").strip() or None,
+                "status": (row.get("status") or "").strip() or None,
+                "version_label": _version_label((row.get("status") or "").strip()),
+                "date_ah": date_ah,
+                "date_ce": date_ce,
+                "period_tag": period_tag,
+                "period": period_label,
+                "region": region_vals,
+                "tags": curated,
+                "tags_raw": tags_raw,
+                "local_path": local_path or None,
+                "ed_info": (row.get("ed_info") or "").strip() or None,
+                "id": (row.get("id") or "").strip() or None,
+            }
+
+            if local_path:
+                by_path[local_path] = meta
+            if version_uri:
+                by_version[version_uri] = meta
+
+    LOG.info("Loaded metadata: %d by path, %d by version", len(by_path), len(by_version))
+    return by_path, by_version
 
 
 # ---------------------------
@@ -275,36 +415,85 @@ def read_text_file(fp: Path) -> str:
 # Postgres upserts
 # ---------------------------
 
-def upsert_author(engine: Engine, author_id: str) -> None:
+def upsert_author(
+    engine: Engine,
+    author_id: str,
+    *,
+    name_ar: str | None = None,
+    name_latn: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    meta = metadata or {}
     sql = text(
         """
-        INSERT INTO authors(author_id, metadata)
-        VALUES (:author_id, '{}'::jsonb)
-        ON CONFLICT (author_id) DO NOTHING
+        INSERT INTO authors(author_id, name_ar, name_latn, metadata)
+        VALUES (:author_id, :name_ar, :name_latn, :metadata)
+        ON CONFLICT (author_id) DO UPDATE
+          SET name_ar = COALESCE(EXCLUDED.name_ar, authors.name_ar),
+              name_latn = COALESCE(EXCLUDED.name_latn, authors.name_latn),
+              metadata = authors.metadata || EXCLUDED.metadata
         """
-    )
+    ).bindparams(bindparam("metadata", type_=JSONB))
     with engine.begin() as conn:
-        conn.execute(sql, {"author_id": author_id})
+        conn.execute(
+            sql,
+            {
+                "author_id": author_id,
+                "name_ar": name_ar,
+                "name_latn": name_latn,
+                "metadata": json.dumps(meta, ensure_ascii=False),
+            },
+        )
 
 
-def upsert_work(engine: Engine, work_id: str, author_id: str) -> None:
+def upsert_work(
+    engine: Engine,
+    work_id: str,
+    author_id: str,
+    *,
+    title_ar: str | None = None,
+    title_latn: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    meta = metadata or {}
     sql = text(
         """
-        INSERT INTO works(work_id, author_id, metadata)
-        VALUES (:work_id, :author_id, '{}'::jsonb)
+        INSERT INTO works(work_id, author_id, title_ar, title_latn, metadata)
+        VALUES (:work_id, :author_id, :title_ar, :title_latn, :metadata)
         ON CONFLICT (work_id) DO UPDATE
-          SET author_id = EXCLUDED.author_id
+          SET author_id = EXCLUDED.author_id,
+              title_ar = COALESCE(EXCLUDED.title_ar, works.title_ar),
+              title_latn = COALESCE(EXCLUDED.title_latn, works.title_latn),
+              metadata = works.metadata || EXCLUDED.metadata
         """
-    )
+    ).bindparams(bindparam("metadata", type_=JSONB))
     with engine.begin() as conn:
-        conn.execute(sql, {"work_id": work_id, "author_id": author_id})
+        conn.execute(
+            sql,
+            {
+                "work_id": work_id,
+                "author_id": author_id,
+                "title_ar": title_ar,
+                "title_latn": title_latn,
+                "metadata": json.dumps(meta, ensure_ascii=False),
+            },
+        )
 
 
-def upsert_version(engine: Engine, t: DiscoveredText, checksum: str | None, word_count: int | None, char_count: int | None) -> None:
+def upsert_version(
+    engine: Engine,
+    t: DiscoveredText,
+    checksum: str | None,
+    word_count: int | None,
+    char_count: int | None,
+    *,
+    metadata: dict | None = None,
+) -> None:
+    meta = metadata or {}
     sql = text(
         """
         INSERT INTO versions(version_id, work_id, is_pri, lang, repo_path, checksum_sha256, word_count, char_count, metadata)
-        VALUES (:version_id, :work_id, :is_pri, :lang, :repo_path, :checksum, :word_count, :char_count, '{}'::jsonb)
+        VALUES (:version_id, :work_id, :is_pri, :lang, :repo_path, :checksum, :word_count, :char_count, :metadata)
         ON CONFLICT (version_id) DO UPDATE
           SET work_id = EXCLUDED.work_id,
               is_pri = EXCLUDED.is_pri,
@@ -312,9 +501,10 @@ def upsert_version(engine: Engine, t: DiscoveredText, checksum: str | None, word
               repo_path = EXCLUDED.repo_path,
               checksum_sha256 = EXCLUDED.checksum_sha256,
               word_count = EXCLUDED.word_count,
-              char_count = EXCLUDED.char_count
+              char_count = EXCLUDED.char_count,
+              metadata = versions.metadata || EXCLUDED.metadata
         """
-    )
+    ).bindparams(bindparam("metadata", type_=JSONB))
     with engine.begin() as conn:
         conn.execute(
             sql,
@@ -327,6 +517,7 @@ def upsert_version(engine: Engine, t: DiscoveredText, checksum: str | None, word
                 "checksum": checksum,
                 "word_count": word_count,
                 "char_count": char_count,
+                "metadata": json.dumps(meta, ensure_ascii=False),
             },
         )
 
@@ -540,6 +731,9 @@ def run() -> None:
 
     engine = get_engine()
 
+    curated_tags = _load_curated_tags()
+    metadata_by_path, metadata_by_version = load_metadata(corpus_root, curated_tags)
+
     LOG.info("Discovering texts under %s", corpus_root)
     texts = discover_200_pri_arabic(corpus_root, target_works=DEFAULT_TARGET_WORKS)
     if not texts:
@@ -557,11 +751,58 @@ def run() -> None:
     # Process each text end-to-end
     for t in tqdm(texts, desc="Ingest versions", unit="version"):
         try:
-            # Basic upserts (metadata-heavy ingestion comes later)
-            upsert_author(engine, t.author_id)
-            upsert_work(engine, t.work_id, t.author_id)
+            meta = metadata_by_path.get(t.repo_path) or metadata_by_version.get(t.abs_path.stem)
+
+            author_name_lat = None
+            work_title_ar = None
+            work_title_lat = None
+            author_meta: dict = {}
+            work_meta: dict = {}
+            version_meta: dict = {}
+
+            if meta:
+                author_name_lat = meta.get("author_lat") or meta.get("author_lat_shuhra")
+                work_title_ar = meta.get("work_title_ar")
+                work_title_lat = meta.get("work_title_lat")
+                author_meta = {
+                    "author_lat_shuhra": meta.get("author_lat_shuhra"),
+                    "author_lat_full_name": meta.get("author_lat_full_name"),
+                }
+                work_meta = {
+                    "book": meta.get("book"),
+                }
+                version_meta = {
+                    "date_ah": meta.get("date_ah"),
+                    "date_ce": meta.get("date_ce"),
+                    "period_tag": meta.get("period_tag"),
+                    "period": meta.get("period"),
+                    "region": meta.get("region"),
+                    "tags": meta.get("tags"),
+                    "status": meta.get("status"),
+                    "version_label": meta.get("version_label"),
+                    "local_path": meta.get("local_path"),
+                    "ed_info": meta.get("ed_info"),
+                    "source_id": meta.get("id"),
+                }
+
+            # Basic upserts (now metadata-aware)
+            upsert_author(
+                engine,
+                t.author_id,
+                name_ar=meta.get("author_ar") if meta else None,
+                name_latn=author_name_lat,
+                metadata=author_meta,
+            )
+            upsert_work(
+                engine,
+                t.work_id,
+                t.author_id,
+                title_ar=work_title_ar,
+                title_latn=work_title_lat,
+                metadata=work_meta,
+            )
             # Ensure the version exists before any ingest_state updates (FK constraint).
-            upsert_version(engine, t, checksum=None, word_count=None, char_count=None)
+            upsert_version(engine, t, checksum=None, word_count=None, char_count=None, metadata=version_meta)
             set_ingest_state(engine, t.version_id, "discovered")
 
             raw = read_text_file(t.abs_path)
@@ -572,7 +813,14 @@ def run() -> None:
             word_count = len(raw_compact.split(" ")) if raw_compact else 0
             char_count = len(raw)
 
-            upsert_version(engine, t, checksum=checksum, word_count=word_count, char_count=char_count)
+            upsert_version(
+                engine,
+                t,
+                checksum=checksum,
+                word_count=word_count,
+                char_count=char_count,
+                metadata=version_meta,
+            )
             set_ingest_state(engine, t.version_id, "parsed")
 
             heading_text, heading_path = extract_heading_context(raw)
@@ -586,6 +834,8 @@ def run() -> None:
 
             chunk_rows: List[dict] = []
             os_docs: List[dict] = []
+            os_meta = meta or {}
+            os_author_name_lat = os_meta.get("author_lat") or os_meta.get("author_lat_shuhra")
 
             # Create chunk rows in memory, then batch insert/index
             chunks_for_vectors: List[Tuple[str, str, dict]] = []  # (chunk_id, text_norm, payload)
@@ -627,6 +877,18 @@ def run() -> None:
                         "is_pri": t.is_pri,
                         "title": None,
                         "content": text_norm,
+                        "author_name_ar": os_meta.get("author_ar"),
+                        "author_name_lat": os_author_name_lat,
+                        "work_title_ar": os_meta.get("work_title_ar"),
+                        "work_title_lat": os_meta.get("work_title_lat"),
+                        "date_ah": os_meta.get("date_ah"),
+                        "date_ce": os_meta.get("date_ce"),
+                        "period": os_meta.get("period"),
+                        "period_tag": os_meta.get("period_tag"),
+                        "region": os_meta.get("region") or [],
+                        "tags": os_meta.get("tags") or [],
+                        "version_label": os_meta.get("version_label"),
+                        "type": "Passage",
                     }
                 )
 

@@ -96,6 +96,19 @@
         "lang": { "type": "keyword" },
         "is_pri": { "type": "boolean" },
 
+        "author_name_ar": { "type": "keyword" },
+        "author_name_lat": { "type": "keyword" },
+        "work_title_ar": { "type": "keyword" },
+        "work_title_lat": { "type": "keyword" },
+        "date_ah": { "type": "integer" },
+        "date_ce": { "type": "integer" },
+        "period": { "type": "keyword" },
+        "period_tag": { "type": "keyword" },
+        "region": { "type": "keyword" },
+        "tags": { "type": "keyword" },
+        "version_label": { "type": "keyword" },
+        "type": { "type": "keyword" },
+
         "title": {
           "type": "text",
           "analyzer": "openiti_exact"

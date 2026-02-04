@@ -7,7 +7,7 @@ from .db import get_engine, ping_db
 from .clients.opensearch_client import bm25_search, ping_opensearch
 from .clients.qdrant_client import ping_qdrant, vector_search
 from .repos.chunks import get_chunk_with_neighbors
-from .schemas import HealthResponse, SearchResponse, SearchHit, ChunkResponse
+from .schemas import HealthResponse, SearchResponse, SearchHit, ChunkResponse, FacetBucket
 
 
 app = FastAPI(title="OpenITI Discovery API", version="0.1.0")
@@ -47,6 +47,7 @@ def search(
     q: str = Query(..., min_length=1),
     mode: str = Query("bm25", pattern="^(bm25|vector|hybrid)$"),
     size: int = Query(settings.DEFAULT_SIZE, ge=1, le=settings.MAX_SIZE),
+    page: int = Query(1, ge=1),
     langs: str | None = Query(None, description="Comma-separated: ara,fas,ota"),
     pri_only: bool = Query(settings.DEFAULT_PRI_ONLY),
     # For vector/hybrid mode: provide a query vector (temporary hook).
@@ -56,12 +57,37 @@ def search(
     ),
 ) -> SearchResponse:
     langs_list = [x.strip() for x in langs.split(",")] if langs else None
+    from_ = (page - 1) * size
 
     results: list[SearchHit] = []
+    facets: dict[str, list[FacetBucket]] = {}
+    total = 0
 
     if mode in ("bm25", "hybrid"):
-        os_res = bm25_search(q=q, size=size, langs=langs_list, pri_only=pri_only)
+        os_res = bm25_search(
+            q=q,
+            size=size,
+            from_=from_,
+            langs=langs_list,
+            pri_only=pri_only,
+            include_aggs=True,
+        )
         hits = os_res.get("hits", {}).get("hits", [])
+        total_obj = os_res.get("hits", {}).get("total", 0)
+        if isinstance(total_obj, dict):
+            total = int(total_obj.get("value") or 0)
+        else:
+            total = int(total_obj or 0)
+
+        aggs = os_res.get("aggregations", {}) or {}
+        for key in ("period", "region", "tags", "lang", "version"):
+            buckets = aggs.get(key, {}).get("buckets", []) if aggs else []
+            facets[key] = [
+                FacetBucket(key=b.get("key"), count=int(b.get("doc_count") or 0))
+                for b in buckets
+                if b.get("key") is not None
+            ]
+
         for h in hits:
             src = h.get("_source") or {}
             results.append(
@@ -74,7 +100,15 @@ def search(
             )
 
         if mode == "bm25":
-            return SearchResponse(query=q, mode=mode, size=size, results=results)
+            return SearchResponse(
+                query=q,
+                mode=mode,
+                total=total,
+                page=page,
+                size=size,
+                results=results,
+                facets=facets,
+            )
 
     # vector or hybrid requires query vector provided
     if mode in ("vector", "hybrid"):
@@ -92,7 +126,15 @@ def search(
                 for h in vhits
                 if h.get("chunk_id")
             ]
-            return SearchResponse(query=q, mode=mode, size=size, results=out)
+            return SearchResponse(
+                query=q,
+                mode=mode,
+                total=len(out),
+                page=page,
+                size=size,
+                results=out,
+                facets={},
+            )
 
         # hybrid: naive fusion (RRF-lite): combine normalized ranks
         # This is intentionally simple; replace with true RRF later.
@@ -122,7 +164,15 @@ def search(
                 # fallback payload-only
                 payload = next((h["payload"] for h in vhits if h.get("chunk_id") == cid), {})
                 out.append(SearchHit(chunk_id=cid, score=score, source=payload))
-        return SearchResponse(query=q, mode=mode, size=size, results=out)
+        return SearchResponse(
+            query=q,
+            mode=mode,
+            total=total or len(out),
+            page=page,
+            size=size,
+            results=out,
+            facets=facets,
+        )
 
     # Should never hit this due to mode pattern
     raise HTTPException(status_code=400, detail="invalid mode")

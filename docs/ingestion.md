@@ -105,6 +105,7 @@ docker compose --profile ingest run --rm ingest
 | `OPENSEARCH_INDEX_CHUNKS` |           `openiti_chunks` | Alias or index name          |
 | `QDRANT_URL`              |       `http://qdrant:6333` | Qdrant endpoint              |
 | `QDRANT_COLLECTION`       |           `openiti_chunks` | Qdrant collection name       |
+| `CURATED_TAGS_PATH`       |    `/app/curated_tags.txt` | Curated tag list for faceting |
 
 ### Ingest Controls
 
@@ -141,11 +142,15 @@ The pipeline reads OpenITI RELEASE metadata (CSV) and stores it in PostgreSQL. T
 * language flags
 * PRI designation (where available)
 * bibliographic facets (dates, genres, tags)
+* period and region facets derived from tags
 
 **Behavior**
 
 * Upsert by stable IDs (avoid duplicates)
 * Track source CSV revision (optional but recommended)
+* Period: derived from `GAL@period-*` tags
+* Region: derived from `_RE` tags with precedence `born > resided > died > visited`
+* Tags: filtered to curated list (`CURATED_TAGS_PATH`)
 
 ```mermaid
 flowchart LR
@@ -288,6 +293,10 @@ Fields typically include:
 * `is_pri`
 * `title`
 * `content` (multi-field analyzers)
+* `author_name_*`, `work_title_*`
+* `date_ah`, `date_ce`
+* `period`, `region`, `tags`
+* `version_label`, `type`
 
 OpenSearch index should be created from an index template (see `opensearch/templates/...`).
 

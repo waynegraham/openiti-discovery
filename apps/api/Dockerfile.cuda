@@ -34,6 +34,7 @@ RUN python -m pip install --upgrade pip \
 
 # Copy the API application code (including alembic files)
 COPY apps/api /app/apps/api
+COPY curated_tags.txt /app/curated_tags.txt
 
 # Make apps/api the default working directory so `alembic` just works
 WORKDIR /app/apps/api

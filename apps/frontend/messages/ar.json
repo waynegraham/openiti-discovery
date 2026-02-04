@@ -7,7 +7,7 @@
     "searchPlaceholder": "ابحث عن نصوص أو مؤلفين أو أماكن...",
     "searchButton": "ابحث",
     "helper": "ابدأ على نطاق واسع ثم صفِّ حسب المنطقة أو الفترة أو المجموعة.",
-    "examples": "جرّب: قواعد فقهية، ما هي السينما"
+    "examples": "جرّب: قواعد فقهية، ما هي السينما، ودمع كسح"
   },
   "search": {
     "eyebrow": "نتائج البحث",
@@ -44,6 +44,14 @@
     "relatedTitle": "مسارات ذات صلة",
     "relatedOne": "تصفح حسب المؤلف",
     "relatedTwo": "تصفح حسب النوع",
-    "relatedThree": "تصفح حسب المنطقة"
+    "relatedThree": "تصفح حسب المنطقة",
+    "modeLabel": "Mode",
+    "pageSizeLabel": "Page size",
+    "noActiveFilters": "No filters",
+    "statRegions": "Regions",
+    "statTags": "Tags",
+    "pageLabel": "Page {page} of {totalPages}",
+    "prevPage": "Previous",
+    "nextPage": "Next"
   }
 }

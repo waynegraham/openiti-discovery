@@ -10,6 +10,11 @@ class HealthResponse(BaseModel):
     qdrant: bool
 
 
+class FacetBucket(BaseModel):
+    key: str
+    count: int
+
+
 class SearchHit(BaseModel):
     chunk_id: str
     score: float
@@ -20,8 +25,11 @@ class SearchHit(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     mode: str  # bm25 | vector | hybrid
+    total: int
+    page: int
     size: int
     results: list[SearchHit]
+    facets: dict[str, list[FacetBucket]] = Field(default_factory=dict)
 
 
 class ChunkResponse(BaseModel):

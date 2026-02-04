@@ -58,3 +58,15 @@ docker compose exec -T postgres psql -U openiti -d openiti \
       union all select 'works', count(*) from works
       union all select 'versions', count(*) from versions
       union all select 'chunks', count(*) from chunks;"
+
+## OpenSearch
+
+# 1) Apply template
+curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template_v1 \
+  -H "Content-Type: application/json" \
+  -d @opensearch/templates/openiti_chunks_template.json
+
+# 2) Create new index (version bump)
+curl -X PUT http://localhost:9200/openiti_chunks_v2
+
+

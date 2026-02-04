@@ -7,7 +7,7 @@
     "searchPlaceholder": "Search texts, authors, places...",
     "searchButton": "Search",
     "helper": "Start broad, then filter by region, period, or collection.",
-    "examples": "Try: Qawacid Fiqhiyya, Ma Hiya Sinima"
+    "examples": "Try: Qawacid Fiqhiyya, Ma Hiya Sinima, ودمع كسح"
   },
   "search": {
     "eyebrow": "Search results",
@@ -44,6 +44,14 @@
     "relatedTitle": "Related paths",
     "relatedOne": "Browse by author",
     "relatedTwo": "Browse by genre",
-    "relatedThree": "Browse by region"
+    "relatedThree": "Browse by region",
+    "modeLabel": "Mode",
+    "pageSizeLabel": "Page size",
+    "noActiveFilters": "No filters",
+    "statRegions": "Regions",
+    "statTags": "Tags",
+    "pageLabel": "Page {page} of {totalPages}",
+    "prevPage": "Previous",
+    "nextPage": "Next"
   }
 }

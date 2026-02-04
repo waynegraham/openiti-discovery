@@ -35,8 +35,10 @@ def bm25_search(
     *,
     q: str,
     size: int,
+    from_: int,
     langs: list[str] | None,
     pri_only: bool,
+    include_aggs: bool = True,
 ) -> dict:
     """
     Minimal BM25 search using multi_match across analyzed content fields.
@@ -50,6 +52,7 @@ def bm25_search(
 
     body = {
         "size": size,
+        "from": from_,
         "query": {
             "bool": {
                 "filter": filters,
@@ -78,6 +81,14 @@ def bm25_search(
             }
         },
     }
+    if include_aggs:
+        body["aggs"] = {
+            "period": {"terms": {"field": "period", "size": 24}},
+            "region": {"terms": {"field": "region", "size": 24}},
+            "tags": {"terms": {"field": "tags", "size": 50}},
+            "lang": {"terms": {"field": "lang", "size": 10}},
+            "version": {"terms": {"field": "version_label", "size": 10}},
+        }
 
     client = get_opensearch()
     return client.search(index=settings.OPENSEARCH_INDEX_CHUNKS, body=body)
