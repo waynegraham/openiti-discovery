@@ -205,3 +205,4 @@ Active development. Expect iteration in schema, analyzers, ingest logic, and UI 
 * OpenITI Project and contributors
 * KITAB / AKU initiatives
 * OpenSearch, Qdrant, and PostgreSQL communities
+
