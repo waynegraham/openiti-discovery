@@ -198,6 +198,8 @@ Ingest behavior is controlled via environment variables (see `.env.example` and 
 * `EMBEDDING_DEVICE`: `cpu` or `cuda`
 * `EMBEDDING_MODEL`: default multilingual MiniLM
 
+Curated facet tags are managed in `curated_tags.txt`. For domain-expert editing instructions, see `docs/curated-tags.md`.
+
 ---
 
 ## API Endpoints (Current)
