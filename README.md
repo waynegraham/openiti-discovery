@@ -182,7 +182,13 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu bui
 ```
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm --gpus all ingest_cuda
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm ingest_cuda
+```
+
+Quick GPU check:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm ingest_cuda nvidia-smi
 ```
 
 If you want auto-detection, set `EMBEDDING_DEVICE=auto` in `.env` or pass it via `-e`.

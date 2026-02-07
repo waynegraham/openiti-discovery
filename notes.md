@@ -38,7 +38,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run
    -e INGEST_ONLY_PRI=true `
    -e INGEST_LANGS=ara `
    -e EMBEDDINGS_ENABLED=true `
-   -e EMBEDDING_DEVICE=gpu `
+   -e EMBEDDING_DEVICE=auto `
    ingest_cuda
 ```
 
