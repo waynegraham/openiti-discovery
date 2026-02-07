@@ -310,12 +310,109 @@ def choose_pri_versions(files_by_workdir: Dict[Path, List[Path]]) -> List[Path]:
     return chosen
 
 
-def discover_200_pri_arabic(corpus_root: Path, target_works: int) -> List[DiscoveredText]:
+def _pri_score(path: Path, status: str | None) -> int:
+    score = 0
+    if (status or "").lower() == "pri":
+        score += 2
+    if "pri" in path.name.lower():
+        score += 1
+    return score
+
+
+def _resolve_local_path(corpus_root: Path, local_path: str) -> tuple[str, Path] | tuple[None, None]:
+    rel = _normalize_repo_path(local_path)
+    if not rel:
+        return None, None
+    if not rel.startswith("data/"):
+        rel = f"data/{rel}"
+    abs_path = (corpus_root / rel).resolve()
+    if not abs_path.is_file():
+        return None, None
+    return rel, abs_path
+
+
+def _discover_from_metadata_index(
+    corpus_root: Path,
+    target_works: int,
+    metadata_by_path: dict[str, dict],
+) -> List[DiscoveredText]:
+    if not metadata_by_path or target_works <= 0:
+        return []
+
+    selected_by_work: dict[tuple[str, str], tuple[Path, str, str | None, int]] = {}
+    all_files: list[tuple[Path, str]] = []
+
+    for local_path, meta in metadata_by_path.items():
+        repo_rel, abs_path = _resolve_local_path(corpus_root, local_path)
+        if not repo_rel or not abs_path:
+            continue
+        try:
+            rel_parts = abs_path.relative_to(corpus_root / "data").parts
+        except Exception:
+            continue
+        if len(rel_parts) < 3:
+            continue
+
+        status = (meta.get("status") or "").strip().lower() or None
+        work_key = (rel_parts[0], rel_parts[1])
+        score = _pri_score(abs_path, status)
+
+        if DEFAULT_ONLY_PRI:
+            if score <= 0:
+                continue
+            prev = selected_by_work.get(work_key)
+            if prev is None or score > prev[3] or (score == prev[3] and repo_rel < prev[1]):
+                selected_by_work[work_key] = (abs_path, repo_rel, status, score)
+        else:
+            all_files.append((abs_path, repo_rel))
+
+    if DEFAULT_ONLY_PRI:
+        selected = sorted(selected_by_work.values(), key=lambda t: t[1])[:target_works]
+        files = [(t[0], t[1]) for t in selected]
+    else:
+        files = all_files[:target_works]
+
+    discovered: List[DiscoveredText] = []
+    for fp, repo_rel in files:
+        author_id, work_id, version_id, _ = infer_ids_from_path(corpus_root, fp)
+        if "ara" not in DEFAULT_LANGS:
+            continue
+        discovered.append(
+            DiscoveredText(
+                author_id=author_id,
+                work_id=work_id,
+                version_id=version_id,
+                repo_path=repo_rel,
+                abs_path=fp,
+                is_pri=("pri" in fp.name.lower()),
+                lang="ara",
+            )
+        )
+        if len(discovered) >= target_works:
+            break
+    return discovered
+
+
+def discover_200_pri_arabic(
+    corpus_root: Path,
+    target_works: int,
+    *,
+    metadata_by_path: dict[str, dict] | None = None,
+) -> List[DiscoveredText]:
     """
     Discover texts by walking data/ and selecting up to target_works PRI versions in Arabic.
     """
+    if metadata_by_path:
+        discovered = _discover_from_metadata_index(corpus_root, target_works, metadata_by_path)
+        if discovered:
+            LOG.info("Discovery used metadata index: %d texts", len(discovered))
+            return discovered
+
+    # Fallback: filesystem walk.
     # Group by work directory: data/<author>/<work>/
     files_by_workdir: Dict[Path, List[Path]] = {}
+    pri_by_workdir: Dict[Path, Path] = {}
+    first_by_workdir: Dict[Path, Path] = {}
     for fp in iter_text_files(corpus_root):
         # read small head to ensure it's text-like
         try:
@@ -335,7 +432,25 @@ def discover_200_pri_arabic(corpus_root: Path, target_works: int) -> List[Discov
         workdir = (corpus_root / "data" / rel_parts[0] / rel_parts[1])
         files_by_workdir.setdefault(workdir, []).append(fp)
 
-    pri_files = choose_pri_versions(files_by_workdir) if DEFAULT_ONLY_PRI else [f for fs in files_by_workdir.values() for f in fs]
+        if DEFAULT_ONLY_PRI:
+            if workdir not in first_by_workdir:
+                first_by_workdir[workdir] = fp
+            if "pri" in fp.name.lower() and workdir not in pri_by_workdir:
+                pri_by_workdir[workdir] = fp
+                if len(pri_by_workdir) >= target_works:
+                    break
+
+    if DEFAULT_ONLY_PRI:
+        pri_files = list(pri_by_workdir.values())
+        if len(pri_files) < target_works:
+            for workdir, fp in first_by_workdir.items():
+                if workdir in pri_by_workdir:
+                    continue
+                pri_files.append(fp)
+                if len(pri_files) >= target_works:
+                    break
+    else:
+        pri_files = [f for fs in files_by_workdir.values() for f in fs]
 
     discovered: List[DiscoveredText] = []
     for fp in pri_files:
@@ -735,7 +850,11 @@ def run() -> None:
     metadata_by_path, metadata_by_version = load_metadata(corpus_root, curated_tags)
 
     LOG.info("Discovering texts under %s", corpus_root)
-    texts = discover_200_pri_arabic(corpus_root, target_works=DEFAULT_TARGET_WORKS)
+    texts = discover_200_pri_arabic(
+        corpus_root,
+        target_works=DEFAULT_TARGET_WORKS,
+        metadata_by_path=metadata_by_path,
+    )
     if not texts:
         raise RuntimeError("No OpenITI-like text files discovered. Check CORPUS_ROOT mount and RELEASE/data layout.")
 
