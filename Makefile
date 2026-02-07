@@ -29,8 +29,21 @@ endef
 
 .PHONY: help up down reset logs ps \
         wait migrate template index alias status \
-        init init-no-data in
-		gest gpu-ingest
+        init init-no-data ingest gpu-ingest \
+        eval-scaffold eval-run eval-metrics eval-tables eval-record eval-all
+
+# ---- Evaluation config ----
+EVAL_QUERIES ?= /app/data/eval/queries.json
+EVAL_QRELS ?= /app/data/eval/qrels.json
+EVAL_RUN_DIR ?= /app/data/eval/output/runs
+EVAL_METRICS_DIR ?= /app/data/eval/output/metrics
+EVAL_TABLES_DIR ?= /app/data/eval/output/tables
+EVAL_SCALABILITY_MANIFEST ?= /app/data/eval/scalability.json
+EVAL_CONFIGS ?= baseline,normalized,variant_aware,full_pipeline
+EVAL_SIZE ?= 100
+EVAL_LANGS ?= ara
+EVAL_PRI_ONLY ?= true
+EVAL_SCAFFOLD_PER_CATEGORY ?= 4
 
 help:
 	@echo "Targets:"
@@ -38,6 +51,12 @@ help:
 	@echo "  make init-no-data   - Same as init, but skip ingest"
 	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ara)"
 	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
+	@echo "  make eval-scaffold  - Generate placeholder queries + qrels from paper query framework"
+	@echo "  make eval-run       - Run retrieval experiments for all configurations"
+	@echo "  make eval-metrics   - Compute Table X and Table Y CSVs from runs + qrels"
+	@echo "  make eval-tables    - Render markdown tables + compute Table Z"
+	@echo "  make eval-record    - Append experiment metadata + key metrics to experiment_runs.csv"
+	@echo "  make eval-all       - Run eval-run, eval-metrics, eval-tables in sequence"
 	@echo "  make migrate        - Run alembic upgrade head in api container"
 	@echo "  make template       - Apply OpenSearch index template"
 	@echo "  make index          - Create versioned OpenSearch index (and alias if in template)"
@@ -146,3 +165,49 @@ gpu-ingest:
 	  -e EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED) \
 	  -e EMBEDDING_DEVICE=cuda \
 	  ingest_cuda
+
+eval-run:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \
+	  --queries $(EVAL_QUERIES) \
+	  --output-dir $(EVAL_RUN_DIR) \
+	  --configs $(EVAL_CONFIGS) \
+	  --size $(EVAL_SIZE) \
+	  --langs $(EVAL_LANGS) \
+	  $(if $(filter true,$(EVAL_PRI_ONLY)),--pri-only,)
+
+eval-metrics:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.metrics \
+	  --run-dir $(EVAL_RUN_DIR) \
+	  --qrels $(EVAL_QRELS) \
+	  --out-dir $(EVAL_METRICS_DIR) \
+	  --p-at 10 \
+	  --recall-at 100 \
+	  --success-at 10
+
+eval-tables:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.tables \
+	  --metrics-dir $(EVAL_METRICS_DIR) \
+	  --out-dir $(EVAL_TABLES_DIR) \
+	  --scalability-manifest $(EVAL_SCALABILITY_MANIFEST)
+
+eval-scaffold:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.scaffold \
+	  --out-queries /app/data/eval/queries.placeholder.json \
+	  --out-qrels /app/data/eval/qrels.placeholder.json \
+	  --per-category $(EVAL_SCAFFOLD_PER_CATEGORY)
+
+eval-record:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.record \
+	  --queries $(EVAL_QUERIES) \
+	  --qrels $(EVAL_QRELS) \
+	  --run-dir $(EVAL_RUN_DIR) \
+	  --metrics-dir $(EVAL_METRICS_DIR) \
+	  --tables-dir $(EVAL_TABLES_DIR) \
+	  --out-csv /app/data/eval/output/experiment_runs.csv \
+	  --append
+
+eval-all:
+	$(MAKE) eval-run
+	$(MAKE) eval-metrics
+	$(MAKE) eval-tables
+	$(MAKE) eval-record

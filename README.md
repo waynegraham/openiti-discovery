@@ -200,9 +200,34 @@ Active development. Expect iteration in schema, analyzers, ingest logic, and UI 
 
 ---
 
+## Evaluation Scripts (Paper Workflow)
+
+The API container now includes a retrieval-evaluation workflow for paper claims:
+
+* `make eval-scaffold` -> generate placeholder `queries.placeholder.json` and `qrels.placeholder.json` for dry runs
+* `make eval-run` -> executes query set across `baseline`, `normalized`, `variant_aware`, `full_pipeline`
+* `make eval-metrics` -> computes `Precision@10`, `Recall@100`, `MAP`, `Task Success Rate`
+* `make eval-tables` -> renders Markdown/CSV tables for paper insertion
+* `make eval-record` -> appends experiment metadata and top-line metrics to `data/eval/output/experiment_runs.csv`
+* `make eval-all` -> runs `eval-run`, `eval-metrics`, `eval-tables`, `eval-record`
+
+Inputs are in `/data/eval/`:
+
+* `queries.json` (query set + categories)
+* `qrels.json` (relevance judgments)
+* `scalability.json` (small/medium/full corpus rows for Table Z)
+
+Use placeholders before expert validation:
+
+```bash
+make eval-scaffold
+make eval-all EVAL_QUERIES=/apps/data/eval/queries.placeholder.json EVAL_QRELS=/apps/data/eval/qrels.placeholder.json
+```
+
+---
+
 ## Acknowledgements
 
 * OpenITI Project and contributors
 * KITAB / AKU initiatives
 * OpenSearch, Qdrant, and PostgreSQL communities
-

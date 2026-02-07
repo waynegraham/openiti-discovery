@@ -1,0 +1,39 @@
+{
+  "queries": [
+    {
+      "id": "Q1",
+      "category": "known_entity",
+      "text": "الشافعي",
+      "variants": ["الشافعى"],
+      "expansions": ["محمد بن إدريس الشافعي"]
+    },
+    {
+      "id": "Q2",
+      "category": "variant_orthography",
+      "text": "مساله",
+      "variants": ["مسألة", "مساله"],
+      "expansions": []
+    },
+    {
+      "id": "Q3",
+      "category": "conceptual_thematic",
+      "text": "اداب العالم والمتعلم",
+      "variants": [],
+      "expansions": ["آداب", "تعليم"]
+    },
+    {
+      "id": "Q4",
+      "category": "cross_textual_reuse",
+      "text": "اطلبوا العلم ولو بالصين",
+      "variants": [],
+      "expansions": ["طلب العلم"]
+    },
+    {
+      "id": "Q5",
+      "category": "metadata_poor",
+      "text": "البيعة والشرعية",
+      "variants": [],
+      "expansions": ["الخلافة", "السلطة"]
+    }
+  ]
+}

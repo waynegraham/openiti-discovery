@@ -1,0 +1,25 @@
+{
+  "runs": [
+    {
+      "label": "Small Subset",
+      "corpus_size_lines": 1000000,
+      "index_name": "openiti_chunks_v1",
+      "indexing_hours": 1.0,
+      "run_path": "output/runs/run_full_pipeline.json"
+    },
+    {
+      "label": "Medium Subset",
+      "corpus_size_lines": 5000000,
+      "index_name": "openiti_chunks_v2",
+      "indexing_hours": 3.5,
+      "run_path": "output/runs/run_full_pipeline.json"
+    },
+    {
+      "label": "Full Corpus",
+      "corpus_size_lines": 20000000,
+      "index_name": "openiti_chunks_v3",
+      "indexing_hours": 12.0,
+      "run_path": "output/runs/run_full_pipeline.json"
+    }
+  ]
+}

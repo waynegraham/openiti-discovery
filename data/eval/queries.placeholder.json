@@ -1,0 +1,248 @@
+{
+  "meta": {
+    "note": "Placeholder queries generated for pipeline testing before expert validation.",
+    "categories": [
+      "known_entity",
+      "variant_orthography",
+      "conceptual_thematic",
+      "cross_textual_reuse",
+      "metadata_poor"
+    ],
+    "per_category": 4,
+    "total_queries": 20
+  },
+  "queries": [
+    {
+      "id": "Q001",
+      "category": "known_entity",
+      "text": "الشافعي",
+      "variants": [
+        "الشافعى",
+        "محمد بن ادريس الشافعي"
+      ],
+      "expansions": [
+        "محمد بن إدريس الشافعي",
+        "الإمام الشافعي"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q002",
+      "category": "known_entity",
+      "text": "الطبري",
+      "variants": [
+        "الطبرى"
+      ],
+      "expansions": [
+        "محمد بن جرير الطبري"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q003",
+      "category": "known_entity",
+      "text": "إحياء علوم الدين",
+      "variants": [
+        "احياء علوم الدين"
+      ],
+      "expansions": [
+        "الغزالي"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q004",
+      "category": "known_entity",
+      "text": "الشافعي",
+      "variants": [
+        "الشافعى",
+        "محمد بن ادريس الشافعي"
+      ],
+      "expansions": [
+        "محمد بن إدريس الشافعي",
+        "الإمام الشافعي"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q005",
+      "category": "variant_orthography",
+      "text": "مساله",
+      "variants": [
+        "مسألة",
+        "مساله"
+      ],
+      "expansions": [
+        "مسائل الفقه"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q006",
+      "category": "variant_orthography",
+      "text": "مسووليه",
+      "variants": [
+        "مسؤولية",
+        "مسوولية"
+      ],
+      "expansions": [
+        "التكليف"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q007",
+      "category": "variant_orthography",
+      "text": "قضاء",
+      "variants": [
+        "قضا",
+        "قضاء"
+      ],
+      "expansions": [
+        "القضاء والقدر"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q008",
+      "category": "variant_orthography",
+      "text": "مساله",
+      "variants": [
+        "مسألة",
+        "مساله"
+      ],
+      "expansions": [
+        "مسائل الفقه"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q009",
+      "category": "conceptual_thematic",
+      "text": "اداب العالم والمتعلم",
+      "variants": [],
+      "expansions": [
+        "تعليم",
+        "آداب"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q010",
+      "category": "conceptual_thematic",
+      "text": "العدل في الحكم",
+      "variants": [],
+      "expansions": [
+        "السياسة الشرعية",
+        "الانصاف"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q011",
+      "category": "conceptual_thematic",
+      "text": "الزهد والتقشف",
+      "variants": [],
+      "expansions": [
+        "الورع",
+        "الاخلاق"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q012",
+      "category": "conceptual_thematic",
+      "text": "اداب العالم والمتعلم",
+      "variants": [],
+      "expansions": [
+        "تعليم",
+        "آداب"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q013",
+      "category": "cross_textual_reuse",
+      "text": "اطلبوا العلم ولو بالصين",
+      "variants": [],
+      "expansions": [
+        "طلب العلم"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q014",
+      "category": "cross_textual_reuse",
+      "text": "من جد وجد",
+      "variants": [],
+      "expansions": [
+        "الحث على الاجتهاد"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q015",
+      "category": "cross_textual_reuse",
+      "text": "الدين النصيحة",
+      "variants": [],
+      "expansions": [
+        "النصيحة"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q016",
+      "category": "cross_textual_reuse",
+      "text": "اطلبوا العلم ولو بالصين",
+      "variants": [],
+      "expansions": [
+        "طلب العلم"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q017",
+      "category": "metadata_poor",
+      "text": "البيعة والشرعية",
+      "variants": [],
+      "expansions": [
+        "الخلافة",
+        "السلطة"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q018",
+      "category": "metadata_poor",
+      "text": "أحكام السوق",
+      "variants": [],
+      "expansions": [
+        "الحسبة",
+        "المعاملات"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q019",
+      "category": "metadata_poor",
+      "text": "تدبير المدينة",
+      "variants": [],
+      "expansions": [
+        "السلطة",
+        "الإمامة"
+      ],
+      "placeholder": true
+    },
+    {
+      "id": "Q020",
+      "category": "metadata_poor",
+      "text": "البيعة والشرعية",
+      "variants": [],
+      "expansions": [
+        "الخلافة",
+        "السلطة"
+      ],
+      "placeholder": true
+    }
+  ]
+}
