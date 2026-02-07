@@ -96,6 +96,34 @@ Optional profiles:
 * Dashboards: `docker compose --profile dashboards up -d`
 * Redis cache: `docker compose --profile cache up -d`
 
+### Build Images (CPU vs GPU)
+
+Build CPU images (default API + ingest):
+
+```bash
+docker compose build api ingest frontend
+```
+
+Build GPU images (CUDA API + ingest):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu build api_cuda ingest_cuda
+```
+
+Run CPU API stack:
+
+```bash
+docker compose up -d api frontend
+```
+
+Run GPU API stack (Windows/Linux + NVIDIA):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu up -d api_cuda frontend
+```
+
+When using `api_cuda`, point the frontend/API client to `http://localhost:8000` as usual.
+
 ### 4. Run Database Migrations
 
 ```bash
