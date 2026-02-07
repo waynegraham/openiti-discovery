@@ -71,7 +71,7 @@ help:
 	@echo "  make eval-all       - Run eval-run, eval-metrics, eval-tables in sequence"
 	@echo "  make migrate        - Run alembic upgrade head in api container"
 	@echo "  make template       - Apply OpenSearch index template"
-	@echo "  make index          - Create versioned OpenSearch index (and alias if in template)"
+	@echo "  make index          - Create versioned OpenSearch index"
 	@echo "  make status         - Show health of postgres/opensearch/qdrant and alias status"
 	@echo "  make reset          - docker compose down -v (DANGEROUS: deletes volumes)"
 	@echo "  make up             - Bring up core services (postgres/opensearch/qdrant/api/frontend)"
@@ -118,11 +118,11 @@ index:
 	@echo "Index ensured."
 
 alias:
-	@echo "Ensuring alias exists: $(OS_ALIAS) -> $(OS_INDEX)"
-	# If template already assigns alias at index creation, this is harmless.
+	@echo "Ensuring alias write target: $(OS_ALIAS) -> $(OS_INDEX)"
+	# Mark this index as the write target for the alias.
 	curl -fsS -X POST "$(OS_URL)/_aliases" \
 	  -H "Content-Type: application/json" \
-	  -d '{"actions":[{"add":{"index":"'"$(OS_INDEX)"'","alias":"'"$(OS_ALIAS)"'"}}]}' >/dev/null
+	  -d '{"actions":[{"add":{"index":"'"$(OS_INDEX)"'","alias":"'"$(OS_ALIAS)"'","is_write_index":true}}]}' >/dev/null
 	@echo "Alias ensured."
 
 status:

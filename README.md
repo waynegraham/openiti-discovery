@@ -140,10 +140,18 @@ curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template \
   -d @opensearch/templates/openiti_chunks_template.json
 ```
 
-Create an initial index (the template adds the `openiti_chunks` alias automatically):
+Create an initial versioned index:
 
 ```bash
 curl -X PUT http://localhost:9200/openiti_chunks_v2
+```
+
+Attach the stable alias and mark the write index:
+
+```bash
+curl -X POST http://localhost:9200/_aliases \
+  -H "Content-Type: application/json" \
+  -d '{"actions":[{"add":{"index":"openiti_chunks_v2","alias":"openiti_chunks","is_write_index":true}}]}'
 ```
 
 ---
@@ -223,7 +231,7 @@ The vector parameter is a temporary hook until a server-side embedding endpoint 
 
 ## Index Versioning
 
-Indices follow `openiti_chunks_v*`. The template assigns the `openiti_chunks` alias to each created index, enabling safe reindexing and schema changes.
+Indices follow `openiti_chunks_v*`. Use alias `openiti_chunks` for all reads/writes, and ensure exactly one backing index has `is_write_index=true`.
 
 ---
 

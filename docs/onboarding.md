@@ -115,10 +115,12 @@ curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template_v1 \
 curl -X PUT http://localhost:9200/openiti_chunks_v1
 ```
 
-This attaches the alias:
+Attach alias and write target:
 
-```python
-openiti_chunks → openiti_chunks_v1
+```bash
+curl -X POST http://localhost:9200/_aliases \
+  -H "Content-Type: application/json" \
+  -d '{"actions":[{"add":{"index":"openiti_chunks_v1","alias":"openiti_chunks","is_write_index":true}}]}'
 ```
 
 All search code should target the alias, never the concrete index.

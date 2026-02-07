@@ -124,9 +124,6 @@
           }
         }
       }
-    },
-    "aliases": {
-      "openiti_chunks": {}
     }
   },
   "_meta": {

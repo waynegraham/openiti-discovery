@@ -69,4 +69,9 @@ curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template_v1 \
 # 2) Create new index (version bump)
 curl -X PUT http://localhost:9200/openiti_chunks_v2
 
+# 3) Set alias write target
+curl -X POST http://localhost:9200/_aliases \
+  -H "Content-Type: application/json" \
+  -d '{"actions":[{"add":{"index":"openiti_chunks_v2","alias":"openiti_chunks","is_write_index":true}}]}'
+
 

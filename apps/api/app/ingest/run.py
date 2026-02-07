@@ -19,7 +19,7 @@ from sqlalchemy.engine import Engine
 
 from ..db import get_engine
 from ..settings import settings
-from ..clients.opensearch_client import get_opensearch
+from ..clients.opensearch_client import ensure_write_index_target, get_opensearch
 from ..clients.qdrant_client import get_qdrant
 
 # Embeddings
@@ -845,6 +845,7 @@ def run() -> None:
         raise RuntimeError("CORPUS_ROOT is not set or does not exist inside the container.")
 
     engine = get_engine()
+    ensure_write_index_target(settings.OPENSEARCH_INDEX_CHUNKS)
 
     curated_tags = _load_curated_tags()
     metadata_by_path, metadata_by_version = load_metadata(corpus_root, curated_tags)

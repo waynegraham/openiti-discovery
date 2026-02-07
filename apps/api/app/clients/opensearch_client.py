@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import OpenSearchException
 
@@ -29,6 +31,54 @@ def ping_opensearch() -> bool:
         return False
     except Exception:
         return False
+
+
+def ensure_write_index_target(index_or_alias: str) -> str:
+    """
+    Ensure writes to `index_or_alias` will succeed.
+    - If it is a concrete index, return it unchanged.
+    - If it is an alias with missing/invalid write index state, pick one target index
+      and update alias metadata so exactly one index has `is_write_index=true`.
+    """
+    client = get_opensearch()
+
+    if client.indices.exists(index=index_or_alias):
+        return index_or_alias
+
+    if not client.indices.exists_alias(name=index_or_alias):
+        raise RuntimeError(
+            f"OpenSearch target '{index_or_alias}' is neither an existing index nor alias."
+        )
+
+    alias_view = client.indices.get_alias(name=index_or_alias)
+    if not alias_view:
+        raise RuntimeError(f"OpenSearch alias '{index_or_alias}' has no backing indices.")
+
+    all_indices = sorted(alias_view.keys())
+    write_indices: list[str] = []
+    for idx, data in alias_view.items():
+        alias_cfg = (data.get("aliases") or {}).get(index_or_alias) or {}
+        if alias_cfg.get("is_write_index") is True:
+            write_indices.append(idx)
+
+    if len(write_indices) == 1:
+        return index_or_alias
+
+    def _index_sort_key(name: str) -> tuple[int, str]:
+        match = re.search(r"_v(\d+)$", name)
+        return (int(match.group(1)) if match else -1, name)
+
+    target = max(all_indices, key=_index_sort_key)
+    actions = [{"add": {"index": target, "alias": index_or_alias, "is_write_index": True}}]
+    for idx in all_indices:
+        if idx == target:
+            continue
+        actions.append(
+            {"add": {"index": idx, "alias": index_or_alias, "is_write_index": False}}
+        )
+
+    client.indices.update_aliases(body={"actions": actions})
+    return index_or_alias
 
 
 def bm25_search(
