@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # apps/frontend/Dockerfile
 #
 # Minimal Next.js frontend container using pnpm (dev-first).
@@ -14,17 +15,18 @@ WORKDIR /app
 
 # Enable pnpm via Corepack (bundled with Node 20)
 RUN corepack enable \
-    && corepack prepare pnpm@latest --activate
+    && corepack prepare pnpm@9.15.4 --activate
 
 # Install dependencies first for better layer caching
 # Supports both lockfile-present and lockfile-absent states
 # Include pnpm-workspace.yaml so build approvals are honored.
-COPY apps/frontend/package.json apps/frontend/pnpm-lock.yaml* apps/frontend/pnpm-workspace.yaml /app/
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml /app/
 
-RUN pnpm install
+RUN --mount=type=cache,target=/pnpm/store \
+    pnpm install --prefer-offline
 
 # Copy the rest of the frontend code
-COPY apps/frontend /app
+COPY . /app
 
 EXPOSE 3000
 

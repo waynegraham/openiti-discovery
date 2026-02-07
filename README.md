@@ -101,13 +101,13 @@ Optional profiles:
 Build CPU images (default API + ingest):
 
 ```bash
-docker compose build api ingest frontend
+docker compose build api frontend
 ```
 
 Build GPU images (CUDA API + ingest):
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu build api_cuda ingest_cuda
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu build api_cuda
 ```
 
 Run CPU API stack:
@@ -143,14 +143,20 @@ curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template \
 Create an initial index (the template adds the `openiti_chunks` alias automatically):
 
 ```bash
-curl -X PUT http://localhost:9200/openiti_chunks_v1
+curl -X PUT http://localhost:9200/openiti_chunks_v2
 ```
 
 ---
 
 ## Ingesting the Corpus
 
-The ingestion pipeline runs as a one-shot container that uses the API image.
+The ingestion pipeline runs as a one-shot container that reuses the API image.
+
+Build the image first (if needed):
+
+```bash
+docker compose build api
+```
 
 ```bash
 docker compose --profile ingest run --rm ingest
@@ -160,6 +166,12 @@ docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true -e EMBEDDING
 ### GPU Ingest (Windows/Linux + NVIDIA)
 
 Use the CUDA-enabled image and profile (requires Docker Compose with `--gpus` support):
+
+Build the CUDA image first (if needed):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu build api_cuda
+```
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm --gpus all ingest_cuda

@@ -22,8 +22,8 @@ services:
   opensearch:
     # image: opensearchproject/opensearch:3
     build:
-      context: .
-      dockerfile: ./opensearch/Dockerfile
+      context: ./opensearch
+      dockerfile: Dockerfile
     container_name: openiti_opensearch
     environment:
       OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
@@ -100,8 +100,9 @@ services:
   api:
     # Build your FastAPI app image from ./apps/api (example structure)
     build:
-      context: .
-      dockerfile: ./apps/api/Dockerfile
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: openiti_api:dev
     container_name: openiti_api
     env_file:
       - .env
@@ -149,8 +150,9 @@ services:
   api_cuda:
     # CUDA-enabled API (for GPU embeddings)
     build:
-      context: .
-      dockerfile: ./apps/api/Dockerfile.cuda
+      context: ./apps/api
+      dockerfile: Dockerfile.cuda
+    image: openiti_api_cuda:dev
     container_name: openiti_api_cuda
     env_file:
       - .env
@@ -196,8 +198,8 @@ services:
     
   frontend:
     build:
-      context: .
-      dockerfile: ./apps/frontend/Dockerfile
+      context: ./apps/frontend
+      dockerfile: Dockerfile
     container_name: openiti_frontend
     env_file:
       - .env
@@ -216,9 +218,7 @@ services:
   ingest:
     # One-shot ingestion job container.
     # Uses the same image as api so you don’t duplicate dependencies.
-    build:
-      context: .
-      dockerfile: ./apps/api/Dockerfile
+    image: openiti_api:dev
     container_name: openiti_ingest
     env_file:
       - .env
@@ -256,9 +256,7 @@ services:
   ingest_cuda:
     # One-shot ingestion job container (CUDA-enabled).
     # Uses the same image as api_cuda so you don't duplicate dependencies.
-    build:
-      context: .
-      dockerfile: ./apps/api/Dockerfile.cuda
+    image: openiti_api_cuda:dev
     container_name: openiti_ingest_cuda
     env_file:
       - .env

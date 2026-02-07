@@ -2,3 +2,16 @@
 **/.next
 **/.turbo
 **/.pnpm-store
+RELEASE/
+data/
+hf_cache/
+.git/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.venv/
+**/venv/
+**/env/
+**/dist/
+**/build/
+**/*.py[cod]

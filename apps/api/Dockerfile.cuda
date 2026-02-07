@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # apps/api/Dockerfile.cuda
 #
 # CUDA-capable image for:
@@ -10,30 +11,26 @@ FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
 # System deps:
 # - curl/ca-certificates: healthchecks, debugging, TLS
-# - build-essential: occasional wheels need compilation
-# - git: optional, but handy if you ever vendor or inspect repos in-container
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
-      git \
-      build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies first for better layer caching
-COPY apps/api/requirements.base.txt /app/requirements.base.txt
-COPY apps/api/requirements.cuda.txt /app/requirements.cuda.txt
-RUN python -m pip install --upgrade pip \
+COPY requirements.base.txt /app/requirements.base.txt
+COPY requirements.cuda.txt /app/requirements.cuda.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --upgrade pip \
     && pip install -r /app/requirements.cuda.txt
 
 # Copy the API application code (including alembic files)
-COPY apps/api /app/apps/api
+COPY . /app/apps/api
 COPY curated_tags.txt /app/curated_tags.txt
 
 # Make apps/api the default working directory so `alembic` just works
