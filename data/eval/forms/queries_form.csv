@@ -1,0 +1,6 @@
+query_id,category,query_text,variants_pipe,expansions_pipe,notes
+Q001,known_entity,الشافعي,الشافعى|محمد بن ادريس الشافعي,محمد بن إدريس الشافعي|الإمام الشافعي,
+Q002,variant_orthography,مساله,مسألة|مساله,مسائل الفقه,
+Q003,conceptual_thematic,اداب العالم والمتعلم,,تعليم|آداب,
+Q004,cross_textual_reuse,اطلبوا العلم ولو بالصين,,طلب العلم,
+Q005,metadata_poor,البيعة والشرعية,,الخلافة|السلطة,

@@ -30,7 +30,7 @@ endef
 .PHONY: help up down reset logs ps \
         wait migrate template index alias status \
         init init-no-data ingest gpu-ingest \
-        eval-scaffold eval-run eval-metrics eval-tables eval-record eval-all
+        eval-scaffold eval-import-forms eval-run eval-metrics eval-tables eval-record eval-all
 
 # ---- Evaluation config ----
 EVAL_QUERIES ?= /app/data/eval/queries.json
@@ -44,6 +44,8 @@ EVAL_SIZE ?= 100
 EVAL_LANGS ?= ara
 EVAL_PRI_ONLY ?= true
 EVAL_SCAFFOLD_PER_CATEGORY ?= 4
+EVAL_FORMS_QUERIES_CSV ?= /app/data/eval/forms/queries_form.csv
+EVAL_FORMS_QRELS_CSV ?= /app/data/eval/forms/qrels_form.csv
 
 help:
 	@echo "Targets:"
@@ -52,6 +54,7 @@ help:
 	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ara)"
 	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
 	@echo "  make eval-scaffold  - Generate placeholder queries + qrels from paper query framework"
+	@echo "  make eval-import-forms - Convert expert CSV forms into queries.json and qrels.json"
 	@echo "  make eval-run       - Run retrieval experiments for all configurations"
 	@echo "  make eval-metrics   - Compute Table X and Table Y CSVs from runs + qrels"
 	@echo "  make eval-tables    - Render markdown tables + compute Table Z"
@@ -195,6 +198,14 @@ eval-scaffold:
 	  --out-queries /app/data/eval/queries.placeholder.json \
 	  --out-qrels /app/data/eval/qrels.placeholder.json \
 	  --per-category $(EVAL_SCAFFOLD_PER_CATEGORY)
+
+eval-import-forms:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.forms_import \
+	  --queries-csv $(EVAL_FORMS_QUERIES_CSV) \
+	  --qrels-csv $(EVAL_FORMS_QRELS_CSV) \
+	  --out-queries /app/data/eval/queries.json \
+	  --out-qrels /app/data/eval/qrels.json \
+	  --strict
 
 eval-record:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.record \

@@ -1,0 +1,7 @@
+query_id,passage_id,work_id,author_id,relevance,evidence_note,judge_initials,confidence
+Q001,TODO_CHUNK_Q001_A,TODO_WORK_Q001,TODO_AUTHOR_Q001,1,replace with real relevant passage,,high
+Q001,TODO_CHUNK_Q001_B,TODO_WORK_Q001,TODO_AUTHOR_Q001,1,replace with second relevant passage,,medium
+Q002,TODO_CHUNK_Q002_A,TODO_WORK_Q002,TODO_AUTHOR_Q002,1,replace with real relevant passage,,high
+Q003,TODO_CHUNK_Q003_A,TODO_WORK_Q003,TODO_AUTHOR_Q003,1,replace with real relevant passage,,medium
+Q004,TODO_CHUNK_Q004_A,TODO_WORK_Q004,TODO_AUTHOR_Q004,1,replace with real relevant passage,,medium
+Q005,TODO_CHUNK_Q005_A,TODO_WORK_Q005,TODO_AUTHOR_Q005,1,replace with real relevant passage,,low

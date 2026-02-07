@@ -1,3 +1,4 @@
 .env
 hf_cache
 RELEASE
+__pycache__/
