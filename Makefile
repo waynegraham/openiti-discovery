@@ -30,7 +30,9 @@ endef
 .PHONY: help up down reset logs ps \
         wait migrate template index alias status \
         init init-no-data ingest gpu-ingest \
-        eval-scaffold eval-import-forms eval-run eval-metrics eval-tables eval-record eval-all
+        eval-scaffold eval-import-forms eval-corpus-plan eval-qrels-audit \
+        eval-qualitative eval-scalability-measure eval-run-subsets \
+        eval-run eval-metrics eval-tables eval-record eval-all
 
 # ---- Evaluation config ----
 EVAL_QUERIES ?= /app/data/eval/queries.json
@@ -46,6 +48,8 @@ EVAL_PRI_ONLY ?= true
 EVAL_SCAFFOLD_PER_CATEGORY ?= 4
 EVAL_FORMS_QUERIES_CSV ?= /app/data/eval/forms/queries_form.csv
 EVAL_FORMS_QRELS_CSV ?= /app/data/eval/forms/qrels_form.csv
+EVAL_TARGET_LINES ?= 1000000,5000000,20000000
+EVAL_SUBSET_MANIFEST ?= /app/data/eval/subsets.sample.json
 
 help:
 	@echo "Targets:"
@@ -55,6 +59,11 @@ help:
 	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
 	@echo "  make eval-scaffold  - Generate placeholder queries + qrels from paper query framework"
 	@echo "  make eval-import-forms - Convert expert CSV forms into queries.json and qrels.json"
+	@echo "  make eval-corpus-plan - Estimate INGEST_WORK_LIMIT for target corpus line counts"
+	@echo "  make eval-qrels-audit - Validate qrels coverage and consistency"
+	@echo "  make eval-qualitative - Build qualitative baseline vs full_pipeline comparison CSV"
+	@echo "  make eval-scalability-measure - Build measured scalability CSV (avg/p50/p95 latency)"
+	@echo "  make eval-run-subsets - Run ingest+eval across subset manifest definitions"
 	@echo "  make eval-run       - Run retrieval experiments for all configurations"
 	@echo "  make eval-metrics   - Compute Table X and Table Y CSVs from runs + qrels"
 	@echo "  make eval-tables    - Render markdown tables + compute Table Z"
@@ -206,6 +215,47 @@ eval-import-forms:
 	  --out-queries /app/data/eval/queries.json \
 	  --out-qrels /app/data/eval/qrels.json \
 	  --strict
+
+eval-corpus-plan:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.corpus_plan \
+	  --targets $(EVAL_TARGET_LINES) \
+	  --out-json /app/data/eval/output/corpus_plan.json
+
+eval-qrels-audit:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.qrels_audit \
+	  --queries $(EVAL_QUERIES) \
+	  --qrels $(EVAL_QRELS) \
+	  --out-dir /app/data/eval/output/audit
+
+eval-qualitative:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.qualitative_cases \
+	  --run-dir $(EVAL_RUN_DIR) \
+	  --qrels $(EVAL_QRELS) \
+	  --out-csv /app/data/eval/output/qualitative_cases.csv \
+	  --baseline-config baseline \
+	  --full-config full_pipeline \
+	  --granularity passage \
+	  --top-k 10
+
+eval-scalability-measure:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.scalability_measure \
+	  --manifest $(EVAL_SCALABILITY_MANIFEST) \
+	  --out-csv /app/data/eval/output/metrics/table_z_scalability_measured.csv
+
+eval-run-subsets:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.subset_runner \
+	  --subset-manifest $(EVAL_SUBSET_MANIFEST) \
+	  --out-root /app/data/eval/output/subsets \
+	  --queries $(EVAL_QUERIES) \
+	  --qrels $(EVAL_QRELS) \
+	  --configs $(EVAL_CONFIGS) \
+	  --size $(EVAL_SIZE) \
+	  --langs $(EVAL_LANGS) \
+	  $(if $(filter true,$(EVAL_PRI_ONLY)),--pri-only,) \
+	  --embeddings-enabled true \
+	  --embedding-device $(EMBEDDING_DEVICE) \
+	  --scalability-manifest $(EVAL_SCALABILITY_MANIFEST) \
+	  --update-manifest $(EVAL_SCALABILITY_MANIFEST)
 
 eval-record:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.record \

@@ -7,6 +7,7 @@ This folder contains templates used by `app.eval` scripts.
 - `queries.sample.json`: starter query set with categories matching your outline.
 - `qrels.sample.json`: relevance judgments (replace placeholder IDs with real IDs).
 - `scalability.sample.json`: inputs for Table Z.
+- `subsets.sample.json`: subset definitions for multi-size ingest+eval runs.
 - `queries.placeholder.json`: generated filler query pack for smoke-testing pipeline.
 - `qrels.placeholder.json`: generated placeholder judgments (`TODO_*` IDs).
 - `output/`: generated runs, metrics, and tables.
@@ -21,6 +22,42 @@ make eval-all EVAL_QUERIES=/app/data/eval/queries.placeholder.json EVAL_QRELS=/a
 ```
 
 This intentionally produces low/zero retrieval metrics until you replace placeholder qrels with judged IDs.
+
+## Choosing Corpus Sizes For Experiments
+
+Use the planner to estimate `INGEST_WORK_LIMIT` for target line counts (Table Z style):
+
+```bash
+make eval-corpus-plan EVAL_TARGET_LINES=1000000,5000000,20000000
+```
+
+This writes `data/eval/output/corpus_plan.json` with recommended work limits based on actual line counts in discovery order.
+
+## Additional Evaluation Utilities
+
+Run qrels coverage/consistency audit:
+
+```bash
+make eval-qrels-audit
+```
+
+Build qualitative comparison rows (baseline vs full pipeline):
+
+```bash
+make eval-qualitative
+```
+
+Build measured scalability CSV with avg/p50/p95 latency:
+
+```bash
+make eval-scalability-measure
+```
+
+Run small/medium/full subset experiments end-to-end from manifest:
+
+```bash
+make eval-run-subsets EVAL_SUBSET_MANIFEST=/app/data/eval/subsets.sample.json
+```
 
 ## Query file format
 
@@ -64,3 +101,6 @@ Each qrel row can include passage/work/author IDs. Metrics are computed by granu
 - Markdown versions in `output/tables/`
 - `category_breakdown.csv` for the five query categories
 - `experiment_runs.csv` cumulative experiment log (one row per retrieval config per run)
+- `audit/qrels_audit.json` and companion CSVs for qrels quality checks
+- `qualitative_cases.csv` for Section 2.5 case analysis
+- `table_z_scalability_measured.csv` with p50/p95 latency columns

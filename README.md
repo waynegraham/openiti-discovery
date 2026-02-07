@@ -4,12 +4,13 @@ A local-first discovery stack for the OpenITI RELEASE corpus, combining full-tex
 
 ---
 
-## Current State (Feb 2, 2026)
+## Current State (Feb 7, 2026)
 
 * FastAPI API with health and search endpoints
 * BM25 search in OpenSearch, vector search in Qdrant, and a simple hybrid fusion mode
 * One-shot ingest runner that discovers OpenITI texts, chunks them, and indexes BM25 + embeddings
 * Next.js frontend with landing and search UI (currently using mock data; API wiring is pending)
+* Paper-focused evaluation toolkit: query/qrels forms import, corpus-size planning, subset experiment runner, audit, qualitative case extraction, and table generation
 
 ---
 
@@ -200,28 +201,53 @@ Active development. Expect iteration in schema, analyzers, ingest logic, and UI 
 
 ---
 
-## Evaluation Scripts (Paper Workflow)
+## Evaluation Workflow (Paper)
 
-The API container now includes a retrieval-evaluation workflow for paper claims:
+The API container includes a full reproducible workflow for conference/paper experiments.
 
-* `make eval-scaffold` -> generate placeholder `queries.placeholder.json` and `qrels.placeholder.json` for dry runs
-* `make eval-run` -> executes query set across `baseline`, `normalized`, `variant_aware`, `full_pipeline`
-* `make eval-metrics` -> computes `Precision@10`, `Recall@100`, `MAP`, `Task Success Rate`
-* `make eval-tables` -> renders Markdown/CSV tables for paper insertion
-* `make eval-record` -> appends experiment metadata and top-line metrics to `data/eval/output/experiment_runs.csv`
-* `make eval-all` -> runs `eval-run`, `eval-metrics`, `eval-tables`, `eval-record`
+### Core Pipeline
 
-Inputs are in `/data/eval/`:
+* `make eval-run` -> run retrieval configs (`baseline`, `normalized`, `variant_aware`, `full_pipeline`)
+* `make eval-metrics` -> compute Table X + Table Y metrics
+* `make eval-tables` -> render markdown tables and Table Z CSV
+* `make eval-record` -> append run metadata to `data/eval/output/experiment_runs.csv`
+* `make eval-all` -> run `eval-run`, `eval-metrics`, `eval-tables`, `eval-record`
 
-* `queries.json` (query set + categories)
-* `qrels.json` (relevance judgments)
-* `scalability.json` (small/medium/full corpus rows for Table Z)
+### Query + Judgments Authoring
 
-Use placeholders before expert validation:
+* `make eval-scaffold` -> generate placeholder `queries.placeholder.json` and `qrels.placeholder.json`
+* `make eval-import-forms` -> convert expert CSV forms into `data/eval/queries.json` and `data/eval/qrels.json`
+* Expert materials:
+  * `docs/domain_expert_guidlines.md`
+  * `data/eval/forms/queries_form.csv`
+  * `data/eval/forms/qrels_form.csv`
+
+### Corpus Sizing + Multi-Subset Runs
+
+* `make eval-corpus-plan EVAL_TARGET_LINES=1000000,5000000,20000000`
+  * estimates `INGEST_WORK_LIMIT` to hit target line counts
+* `make eval-run-subsets EVAL_SUBSET_MANIFEST=/app/data/eval/subsets.sample.json`
+  * runs ingest + eval for small/medium/full subsets from one manifest
+  * can update `data/eval/scalability.json` with measured run paths and indexing time
+
+### QA + Analysis Utilities
+
+* `make eval-qrels-audit` -> consistency/completeness checks for queries and qrels
+* `make eval-qualitative` -> baseline vs full-pipeline qualitative cases for error analysis
+* `make eval-scalability-measure` -> measured scalability CSV including avg/p50/p95 latency
+
+### Evaluation Data Location
+
+All inputs/outputs live under `data/eval/`:
+
+* Inputs: `queries.json`, `qrels.json`, `scalability.json`, `subsets.sample.json`
+* Outputs: `output/runs`, `output/metrics`, `output/tables`, `output/experiment_runs.csv`, `output/audit`, `output/qualitative_cases.csv`
+
+Placeholder dry-run example:
 
 ```bash
 make eval-scaffold
-make eval-all EVAL_QUERIES=/apps/data/eval/queries.placeholder.json EVAL_QRELS=/apps/data/eval/qrels.placeholder.json
+make eval-all EVAL_QUERIES=/app/data/eval/queries.placeholder.json EVAL_QRELS=/app/data/eval/qrels.placeholder.json
 ```
 
 ---
