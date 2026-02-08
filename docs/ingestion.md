@@ -346,6 +346,32 @@ Recommended checkpoint strategy:
     * skip completed versions unless forced
     * continue incomplete ones from last safe boundary
 
+Current runner behavior:
+
+* `SKIP_EXISTING=true`:
+  * `status=complete` -> skip version
+  * `status=indexed_bm25` -> resume from `last_chunk_index + 1` when embeddings are disabled
+  * `status=indexed_bm25` -> resume from `last_chunk_index` when embeddings are enabled (replay last chunk to guarantee vector parity if crash happened between BM25 and embedding upserts)
+  * `status=embedded` -> resume from `last_chunk_index + 1`
+  * `status=failed` with checkpoint -> resume from checkpoint boundary (`+1` without embeddings, replay-last with embeddings)
+  * `status=discovered|parsed` -> restart from chunk `0`
+* `SKIP_EXISTING=false`:
+  * always reprocess from chunk `0` (idempotent upserts preserve stable IDs)
+
+Useful checkpoint inspection queries:
+
+```sql
+SELECT status, COUNT(*) AS versions
+FROM ingest_state
+GROUP BY status
+ORDER BY status;
+
+SELECT version_id, status, last_chunk_index, attempt_count, updated_at
+FROM ingest_state
+ORDER BY updated_at DESC
+LIMIT 50;
+```
+
 ```mermaid
 stateDiagram-v2
   [*] --> DISCOVERED

@@ -5,12 +5,11 @@ import re
 import sys
 import csv
 import json
-import time
 import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Tuple, Dict
+from typing import Iterator, List, Optional, Tuple, Dict, Literal
 
 from tqdm import tqdm
 from sqlalchemy import bindparam, text
@@ -38,6 +37,7 @@ DEFAULT_ONLY_PRI = os.getenv("INGEST_ONLY_PRI", "true").lower() in ("1", "true",
 DEFAULT_LANGS = os.getenv("INGEST_LANGS", "ara").split(",")  # for this runner we expect ara
 CHUNK_TARGET_WORDS = int(os.getenv("CHUNK_TARGET_WORDS", "300") or "300")
 CHUNK_MAX_OVERLAP_WORDS = int(os.getenv("CHUNK_MAX_OVERLAP_WORDS", "0") or "0")
+SKIP_EXISTING = os.getenv("SKIP_EXISTING", "true").lower() in ("1", "true", "yes")
 
 EMBEDDINGS_ENABLED = os.getenv("EMBEDDINGS_ENABLED", "true").lower() in ("1", "true", "yes")
 EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu").lower()
@@ -53,6 +53,22 @@ OS_BULK_BATCH = int(os.getenv("OPENSEARCH_BULK_BATCH", "500") or "500")
 
 # Curated tags (for faceting)
 CURATED_TAGS_PATH = os.getenv("CURATED_TAGS_PATH", "")
+
+INGEST_FLOW_ORDER = ("discovered", "parsed", "indexed_bm25", "embedded", "complete")
+
+
+@dataclass(frozen=True)
+class IngestStateRow:
+    version_id: str
+    status: str
+    last_chunk_index: int | None
+
+
+@dataclass(frozen=True)
+class IngestDecision:
+    action: Literal["process", "resume", "skip_complete"]
+    start_chunk_index: int
+    reason: str
 
 
 # ---------------------------
@@ -606,7 +622,90 @@ def upsert_version(
         )
 
 
+def get_ingest_state(engine: Engine, version_id: str) -> IngestStateRow | None:
+    sql = text(
+        """
+        SELECT version_id, status, last_chunk_index
+        FROM ingest_state
+        WHERE version_id = :version_id
+        """
+    )
+    with engine.begin() as conn:
+        row = conn.execute(sql, {"version_id": version_id}).mappings().first()
+    if not row:
+        return None
+    return IngestStateRow(
+        version_id=row["version_id"],
+        status=row["status"],
+        last_chunk_index=row["last_chunk_index"],
+    )
+
+
+def _flow_rank(status: str) -> int:
+    if status not in INGEST_FLOW_ORDER:
+        return -1
+    return INGEST_FLOW_ORDER.index(status)
+
+
+def is_valid_ingest_transition(current_status: str | None, next_status: str) -> bool:
+    if not current_status:
+        return next_status == "discovered"
+    if current_status == next_status:
+        return True
+    if current_status == "failed":
+        return next_status in ("discovered", "failed")
+    if next_status == "failed":
+        return True
+    if current_status == "complete":
+        return next_status in ("complete", "discovered")
+    cur_rank = _flow_rank(current_status)
+    next_rank = _flow_rank(next_status)
+    return cur_rank >= 0 and next_rank >= 0 and next_rank >= cur_rank
+
+
+def decide_ingest_behavior(
+    state: IngestStateRow | None,
+    *,
+    skip_existing: bool,
+    embeddings_enabled: bool,
+) -> IngestDecision:
+    if state is None:
+        return IngestDecision(action="process", start_chunk_index=0, reason="no_checkpoint")
+    if state.status == "complete":
+        if skip_existing:
+            return IngestDecision(action="skip_complete", start_chunk_index=0, reason="already_complete")
+        return IngestDecision(action="process", start_chunk_index=0, reason="forced_reprocess_complete")
+
+    if not skip_existing:
+        return IngestDecision(action="process", start_chunk_index=0, reason=f"forced_reprocess_{state.status}")
+
+    if state.status == "embedded":
+        if state.last_chunk_index is None:
+            return IngestDecision(action="process", start_chunk_index=0, reason="embedded_missing_last_chunk")
+        return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index + 1, reason="resume_from_embedded")
+
+    if state.status == "indexed_bm25":
+        if state.last_chunk_index is None:
+            return IngestDecision(action="process", start_chunk_index=0, reason="indexed_missing_last_chunk")
+        if embeddings_enabled:
+            return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index, reason="resume_replay_last_for_embedding")
+        return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index + 1, reason="resume_from_indexed_bm25")
+
+    if state.status == "failed" and state.last_chunk_index is not None:
+        if embeddings_enabled:
+            return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index, reason="resume_failed_replay_last")
+        return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index + 1, reason="resume_failed_from_checkpoint")
+
+    return IngestDecision(action="process", start_chunk_index=0, reason=f"restart_from_{state.status}")
+
+
 def set_ingest_state(engine: Engine, version_id: str, status: str, *, last_chunk_index: int | None = None, error_message: str | None = None) -> None:
+    existing = get_ingest_state(engine, version_id)
+    if not is_valid_ingest_transition(existing.status if existing else None, status):
+        raise RuntimeError(
+            f"Invalid ingest_state transition for {version_id}: "
+            f"{existing.status if existing else '<none>'} -> {status}"
+        )
     sql = text(
         """
         INSERT INTO ingest_state(version_id, status, last_chunk_index, attempt_count)
@@ -616,6 +715,10 @@ def set_ingest_state(engine: Engine, version_id: str, status: str, *, last_chunk
               last_chunk_index = EXCLUDED.last_chunk_index,
               last_step_at = now(),
               error_message = :error_message,
+              attempt_count = CASE
+                  WHEN EXCLUDED.status = 'discovered' THEN ingest_state.attempt_count + 1
+                  ELSE ingest_state.attempt_count
+              END,
               updated_at = now()
         """
     )
@@ -853,12 +956,21 @@ def run() -> None:
 
     LOG.info("Discovered %d texts (target=%d). only_pri=%s langs=%s",
              len(texts), DEFAULT_TARGET_WORKS, DEFAULT_ONLY_PRI, DEFAULT_LANGS)
+    LOG.info("Resumable ingest mode: SKIP_EXISTING=%s", SKIP_EXISTING)
 
     model: SentenceTransformer | None = None
     if EMBEDDINGS_ENABLED:
         LOG.info("Loading embedding model: %s (device=%s)", EMBEDDING_MODEL_ID, resolved_device)
         model = SentenceTransformer(EMBEDDING_MODEL_ID, device=resolved_device)
         ensure_qdrant_collection(model, settings.QDRANT_COLLECTION)
+
+    run_stats = {
+        "processed": 0,
+        "resumed": 0,
+        "skipped_complete": 0,
+        "failed": 0,
+        "reprocessed": 0,
+    }
 
     # Process each text end-to-end
     for t in tqdm(texts, desc="Ingest versions", unit="version"):
@@ -915,7 +1027,39 @@ def run() -> None:
             )
             # Ensure the version exists before any ingest_state updates (FK constraint).
             upsert_version(engine, t, checksum=None, word_count=None, char_count=None, metadata=version_meta)
-            set_ingest_state(engine, t.version_id, "discovered")
+            existing_state = get_ingest_state(engine, t.version_id)
+            decision = decide_ingest_behavior(
+                existing_state,
+                skip_existing=SKIP_EXISTING,
+                embeddings_enabled=EMBEDDINGS_ENABLED,
+            )
+
+            if decision.action == "skip_complete":
+                run_stats["skipped_complete"] += 1
+                LOG.info("Skipping version_id=%s (%s)", t.version_id, decision.reason)
+                continue
+
+            if decision.action == "resume":
+                run_stats["resumed"] += 1
+            else:
+                run_stats["processed"] += 1
+                if existing_state is not None:
+                    run_stats["reprocessed"] += 1
+
+            if decision.start_chunk_index == 0 or (existing_state is not None and existing_state.status == "failed"):
+                set_ingest_state(engine, t.version_id, "discovered")
+            else:
+                LOG.info(
+                    "Resuming version_id=%s from chunk_index=%d (%s)",
+                    t.version_id,
+                    decision.start_chunk_index,
+                    decision.reason,
+                )
+            checkpoint_bm25 = not (
+                decision.action == "resume"
+                and existing_state is not None
+                and existing_state.status == "embedded"
+            )
 
             raw = read_text_file(t.abs_path)
             checksum = sha256_file(t.abs_path)
@@ -933,7 +1077,8 @@ def run() -> None:
                 char_count=char_count,
                 metadata=version_meta,
             )
-            set_ingest_state(engine, t.version_id, "parsed")
+            if decision.start_chunk_index == 0:
+                set_ingest_state(engine, t.version_id, "parsed")
 
             heading_text, heading_path = extract_heading_context(raw)
 
@@ -953,6 +1098,8 @@ def run() -> None:
             chunks_for_vectors: List[Tuple[str, str, dict]] = []  # (chunk_id, text_norm, payload)
 
             for chunk_index, start_word, wslice in chunk_words(words, CHUNK_TARGET_WORDS, CHUNK_MAX_OVERLAP_WORDS):
+                if chunk_index < decision.start_chunk_index:
+                    continue
                 chunk_id = f"{t.version_id}::{chunk_index}"
                 text_norm = " ".join(wslice).strip()
                 # for display, take a slice from raw by approximate proportion (fallback)
@@ -1017,7 +1164,8 @@ def run() -> None:
                 if len(chunk_rows) >= OS_BULK_BATCH:
                     upsert_chunks_batch(engine, chunk_rows)
                     os_bulk_index(os_docs)
-                    set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
+                    if checkpoint_bm25:
+                        set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
 
                     if EMBEDDINGS_ENABLED and model is not None and chunks_for_vectors:
                         _embed_and_upsert(model, chunks_for_vectors)
@@ -1031,7 +1179,8 @@ def run() -> None:
             if chunk_rows:
                 upsert_chunks_batch(engine, chunk_rows)
                 os_bulk_index(os_docs)
-                set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
+                if checkpoint_bm25:
+                    set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
 
                 if EMBEDDINGS_ENABLED and model is not None and chunks_for_vectors:
                     _embed_and_upsert(model, chunks_for_vectors)
@@ -1044,8 +1193,16 @@ def run() -> None:
         except Exception as e:
             LOG.exception("Failed ingest for version_id=%s path=%s", t.version_id, t.repo_path)
             set_ingest_state(engine, t.version_id, "failed", error_message=str(e))
+            run_stats["failed"] += 1
 
-    LOG.info("Ingest run complete.")
+    LOG.info(
+        "Ingest run complete. processed=%d resumed=%d skipped_complete=%d reprocessed=%d failed=%d",
+        run_stats["processed"],
+        run_stats["resumed"],
+        run_stats["skipped_complete"],
+        run_stats["reprocessed"],
+        run_stats["failed"],
+    )
 
 
 def _embed_and_upsert(model: SentenceTransformer, chunks_for_vectors: List[Tuple[str, str, dict]]) -> None:

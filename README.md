@@ -173,7 +173,7 @@ docker compose build api
 
 ```bash
 docker compose --profile ingest run --rm ingest
-docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true -e EMBEDDING_DEVICE=cpu ingest
+docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true -e EMBEDDING_DEVICE=auto ingest
 ```
 
 ### GPU Ingest (Windows/Linux + NVIDIA)
@@ -205,9 +205,16 @@ Ingest behavior is controlled via environment variables (see `.env.example` and 
 * `INGEST_LANGS`: comma-separated tags (currently the ingest runner only processes `ara`)
 * `INGEST_WORK_LIMIT`: limit number of works (default is 200 when unset)
 * `CHUNK_TARGET_WORDS`: default 300
+* `SKIP_EXISTING`: `true` or `false` (default `true`; skips versions already marked `complete` in `ingest_state`)
 * `EMBEDDINGS_ENABLED`: `true` or `false`
 * `EMBEDDING_DEVICE`: `cpu` or `cuda`
 * `EMBEDDING_MODEL`: default multilingual MiniLM
+
+Checkpoint behavior:
+
+* Ingest checkpoints are stored in PostgreSQL `ingest_state` by `version_id`.
+* Restarting ingest resumes from the latest safe chunk boundary for interrupted versions.
+* Set `SKIP_EXISTING=false` to force reprocess from chunk `0` even when a checkpoint exists.
 
 Curated facet tags are managed in `curated_tags.txt`. For domain-expert editing instructions, see `docs/curated-tags.md`.
 

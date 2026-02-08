@@ -40,12 +40,38 @@ Implementation notes:
 ## Milestone 3: True Resumable Ingest
 
 Scope: Implement restartable ingest from `ingest_state` with skip/resume logic.
+Status: Planned
 
 Acceptance criteria:
 - Interrupted ingest can resume without reprocessing completed versions.
 - `SKIP_EXISTING` behavior is implemented and documented.
 - Checkpoint state transitions are deterministic and observable (`discovered -> ... -> complete`).
 - Restart scenario test passes: stop mid-run, restart, same final counts as uninterrupted run.
+
+Implementation plan:
+1. Define a strict ingest-state contract in code and docs.
+2. Add a read path for `ingest_state` at startup to drive per-version decisions.
+3. Implement `SKIP_EXISTING` (`true` default): skip versions with status `complete`, log skip reason, and keep counts.
+4. Implement forced reprocess path (`SKIP_EXISTING=false`): re-run from chunk `0` with idempotent writes and stable chunk IDs.
+5. Implement resume path for interrupted versions: continue from `last_chunk_index + 1` when status is `indexed_bm25` or `embedded`.
+6. Keep transitions deterministic by centralizing allowed status progressions in one helper and rejecting invalid regressions.
+7. Persist checkpoints after every successful batch flush (BM25 and embedding stages) so restarts lose at most one in-flight batch.
+8. Add run summary metrics and logs: `processed`, `resumed`, `skipped_complete`, `failed`, `reprocessed`.
+9. Add operator docs with exact env behavior and example SQL inspection queries for `ingest_state`.
+10. Add a restart integration test that intentionally interrupts ingest mid-version and verifies resumed output matches uninterrupted output.
+11. Add unit tests for decision matrix coverage (`complete`, `failed`, `parsed`, `indexed_bm25`, `embedded`, missing state).
+12. Add CI wiring for the new resumable-ingest tests in backend test workflow.
+
+Execution sequence:
+1. Land state-machine and startup decision logic first.
+2. Land chunk/batch resume mechanics second.
+3. Land tests and docs third.
+4. Gate completion on restart test parity and acceptance criteria pass.
+
+Out of scope for Milestone 3:
+- Multi-worker ingest locking/leases across concurrent runners.
+- Re-chunk migration strategy when chunking config changes.
+- UI surfaces for ingest-state monitoring.
 
 ## Milestone 4: Chunking and Text Fidelity
 
