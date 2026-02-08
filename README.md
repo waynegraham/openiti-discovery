@@ -4,12 +4,14 @@ A local-first discovery stack for the OpenITI RELEASE corpus, combining full-tex
 
 ---
 
-## Current State (Feb 7, 2026)
+## Current State (Feb 8, 2026)
 
-* FastAPI API with health and search endpoints
-* BM25 search in OpenSearch, vector search in Qdrant, and a simple hybrid fusion mode
+* FastAPI API with health, embedding, search, and chunk endpoints
+* BM25 search in OpenSearch, vector search in Qdrant, and hybrid reranking with classic RRF
 * One-shot ingest runner that discovers OpenITI texts, chunks them, and indexes BM25 + embeddings
-* Next.js frontend with landing and search UI (currently using mock data; API wiring is pending)
+* Next.js frontend with live API-backed search (bm25/vector/hybrid), pagination, and clickable facet filters
+* Degraded hybrid behavior: if Qdrant is unavailable, API falls back to BM25 with warning metadata
+* Config-driven search runtime, normalization, and facet labels via `config/search_runtime.yml`, `config/text_normalization.yml`, and `config/facet_labels.csv`
 * Paper-focused evaluation toolkit: query/qrels forms import, corpus-size planning, subset experiment runner, audit, qualitative case extraction, and table generation
 
 ---
@@ -206,21 +208,34 @@ Ingest behavior is controlled via environment variables (see `.env.example` and 
 
 Curated facet tags are managed in `curated_tags.txt`. For domain-expert editing instructions, see `docs/curated-tags.md`.
 
+Search/embedding runtime behavior is configured in:
+
+* `config/search_runtime.yml` (limits, hybrid candidate pool, RRF, timeouts, fallback warning code)
+* `config/text_normalization.yml` (canonical normalization shared by ingest and query embedding)
+* `config/facet_labels.csv` (domain-editable facet labels returned by the API)
+
 ---
 
 ## API Endpoints (Current)
 
 * `GET /health` -> service health summary
-* `GET /search` -> query OpenSearch/Qdrant
+* `POST /embed` -> batch embedding (`texts[]`, `input_type=query|passage`)
+* `GET /search` -> query OpenSearch/Qdrant with bm25/vector/hybrid modes
 * `GET /chunks/{chunk_id}` -> chunk with neighbors
 
 Search modes:
 
 * `mode=bm25` (default)
-* `mode=vector` (requires `vector` parameter)
-* `mode=hybrid` (requires `vector` parameter)
+* `mode=vector` (query embedding generated server-side)
+* `mode=hybrid` (BM25 + vector fused with RRF)
 
-The vector parameter is a temporary hook until a server-side embedding endpoint is added.
+Search response includes `requested_mode` and `effective_mode`. In degraded hybrid mode, `effective_mode` becomes `bm25` and warnings include `qdrant_unavailable_fallback_bm25`.
+
+Facet behavior:
+
+* Facet filters can be applied across all modes.
+* Facet counts are returned for BM25 effective mode.
+* Frontend hides facet counts in non-BM25 modes to avoid mismatch.
 
 ---
 
@@ -253,7 +268,7 @@ You are responsible for complying with the OpenITI license when deploying or red
 
 ## Status
 
-Active development. Expect iteration in schema, analyzers, ingest logic, and UI wiring.
+Active development. Core live search wiring is now in place; expect ongoing iteration in schema, analyzers, ingest logic, ranking, and UX polish.
 
 ---
 
