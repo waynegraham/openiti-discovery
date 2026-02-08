@@ -71,6 +71,25 @@ class IngestDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class SectionBlock:
+    heading_text: str | None
+    heading_path: list[str] | None
+    word_spans: list[tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class PlannedChunk:
+    chunk_index: int
+    heading_text: str | None
+    heading_path: list[str] | None
+    start_char_offset: int
+    end_char_offset: int
+    text_raw: str
+    text_norm: str
+    word_count: int
+
+
 # ---------------------------
 # Metadata loading + facets
 # ---------------------------
@@ -487,6 +506,99 @@ def chunk_words(words: List[str], target: int, overlap: int) -> Iterator[Tuple[i
         i += step
 
 
+HEADING_LINE_RE = re.compile(r"^(?P<hashes>#{1,6})\s*(?P<body>.+?)\s*$")
+WORD_RE = re.compile(r"\S+")
+
+
+def _parse_heading_line(line: str) -> tuple[int, str] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("######OpenITI#"):
+        return None
+
+    match = HEADING_LINE_RE.match(stripped)
+    if not match:
+        return None
+
+    level = len(match.group("hashes"))
+    body = match.group("body").strip().lstrip("|").strip()
+    if not body or body.startswith("OpenITI#"):
+        return None
+    return level, body
+
+
+def _build_section_blocks(raw: str) -> list[SectionBlock]:
+    sections: list[SectionBlock] = [SectionBlock(heading_text=None, heading_path=None, word_spans=[])]
+    heading_stack: list[str] = []
+    cursor = 0
+
+    for line in raw.splitlines(keepends=True):
+        line_start = cursor
+        if line.strip().startswith("######OpenITI#"):
+            cursor += len(line)
+            continue
+        heading = _parse_heading_line(line)
+        if heading is not None:
+            level, heading_text = heading
+            if level <= 0:
+                level = 1
+            heading_stack = heading_stack[: level - 1]
+            heading_stack.append(heading_text)
+            sections.append(
+                SectionBlock(
+                    heading_text=heading_text,
+                    heading_path=list(heading_stack),
+                    word_spans=[],
+                )
+            )
+        else:
+            word_spans = list(sections[-1].word_spans)
+            for m in WORD_RE.finditer(line):
+                word_spans.append((line_start + m.start(), line_start + m.end()))
+            sections[-1] = SectionBlock(
+                heading_text=sections[-1].heading_text,
+                heading_path=sections[-1].heading_path,
+                word_spans=word_spans,
+            )
+        cursor += len(line)
+
+    return sections
+
+
+def build_chunk_plan(raw: str, *, target_words: int, overlap_words: int) -> list[PlannedChunk]:
+    sections = _build_section_blocks(raw)
+    chunks: list[PlannedChunk] = []
+    next_chunk_index = 0
+
+    for section in sections:
+        if not section.word_spans:
+            continue
+        section_words = [raw[s:e] for s, e in section.word_spans]
+        for _local_index, start_word, wslice in chunk_words(section_words, target_words, overlap_words):
+            if not wslice:
+                continue
+            end_word = start_word + len(wslice) - 1
+            start_char = section.word_spans[start_word][0]
+            end_char = section.word_spans[end_word][1]
+            text_raw = raw[start_char:end_char]
+            text_norm = normalize_arabic_script(text_raw)
+            if not text_norm:
+                continue
+            chunks.append(
+                PlannedChunk(
+                    chunk_index=next_chunk_index,
+                    heading_text=section.heading_text,
+                    heading_path=section.heading_path,
+                    start_char_offset=start_char,
+                    end_char_offset=end_char,
+                    text_raw=text_raw,
+                    text_norm=text_norm,
+                    word_count=len(wslice),
+                )
+            )
+            next_chunk_index += 1
+    return chunks
+
+
 def extract_heading_context(text: str) -> Tuple[Optional[str], Optional[List[str]]]:
     """
     Minimal mARkdown heading extraction:
@@ -763,6 +875,10 @@ def upsert_chunks_batch(engine: Engine, rows: List[dict]) -> None:
               text_norm = EXCLUDED.text_norm,
               heading_text = EXCLUDED.heading_text,
               heading_path = EXCLUDED.heading_path,
+              start_char_offset = EXCLUDED.start_char_offset,
+              end_char_offset = EXCLUDED.end_char_offset,
+              word_count = EXCLUDED.word_count,
+              token_count = EXCLUDED.token_count,
               prev_chunk_id = EXCLUDED.prev_chunk_id,
               next_chunk_id = EXCLUDED.next_chunk_id,
               updated_at = now()
@@ -1080,12 +1196,12 @@ def run() -> None:
             if decision.start_chunk_index == 0:
                 set_ingest_state(engine, t.version_id, "parsed")
 
-            heading_text, heading_path = extract_heading_context(raw)
-
-            # normalize + chunk
-            norm = normalize_arabic_script(raw)
-            words = norm.split(" ") if norm else []
-            if not words:
+            chunk_plan = build_chunk_plan(
+                raw,
+                target_words=CHUNK_TARGET_WORDS,
+                overlap_words=CHUNK_MAX_OVERLAP_WORDS,
+            )
+            if not chunk_plan:
                 set_ingest_state(engine, t.version_id, "failed", error_message="empty text after normalization")
                 continue
 
@@ -1097,27 +1213,24 @@ def run() -> None:
             # Create chunk rows in memory, then batch insert/index
             chunks_for_vectors: List[Tuple[str, str, dict]] = []  # (chunk_id, text_norm, payload)
 
-            for chunk_index, start_word, wslice in chunk_words(words, CHUNK_TARGET_WORDS, CHUNK_MAX_OVERLAP_WORDS):
-                if chunk_index < decision.start_chunk_index:
+            for planned_chunk in chunk_plan:
+                if planned_chunk.chunk_index < decision.start_chunk_index:
                     continue
-                chunk_id = f"{t.version_id}::{chunk_index}"
-                text_norm = " ".join(wslice).strip()
-                # for display, take a slice from raw by approximate proportion (fallback)
-                text_raw = text_norm  # MVP: later replace with true raw slicing
+                chunk_id = f"{t.version_id}::{planned_chunk.chunk_index}"
 
                 row = {
                     "chunk_id": chunk_id,
                     "version_id": t.version_id,
                     "work_id": t.work_id,
                     "author_id": t.author_id,
-                    "chunk_index": chunk_index,
-                    "heading_text": heading_text,
-                    "heading_path": heading_path,
-                    "start_char_offset": None,
-                    "end_char_offset": None,
-                    "text_raw": text_raw,
-                    "text_norm": text_norm,
-                    "word_count": len(wslice),
+                    "chunk_index": planned_chunk.chunk_index,
+                    "heading_text": planned_chunk.heading_text,
+                    "heading_path": planned_chunk.heading_path,
+                    "start_char_offset": planned_chunk.start_char_offset,
+                    "end_char_offset": planned_chunk.end_char_offset,
+                    "text_raw": planned_chunk.text_raw,
+                    "text_norm": planned_chunk.text_norm,
+                    "word_count": planned_chunk.word_count,
                     "token_count": None,
                     "prev_chunk_id": None,
                     "next_chunk_id": None,
@@ -1135,7 +1248,7 @@ def run() -> None:
                         "lang": t.lang,
                         "is_pri": t.is_pri,
                         "title": None,
-                        "content": text_norm,
+                        "content": planned_chunk.text_norm,
                         "author_name_ar": os_meta.get("author_ar"),
                         "author_name_lat": os_author_name_lat,
                         "work_title_ar": os_meta.get("work_title_ar"),
@@ -1154,11 +1267,11 @@ def run() -> None:
                 if EMBEDDINGS_ENABLED and model is not None:
                     payload = build_vector_payload(
                         chunk_id=chunk_id,
-                        chunk_index=chunk_index,
+                        chunk_index=planned_chunk.chunk_index,
                         t=t,
                         meta=os_meta,
                     )
-                    chunks_for_vectors.append((chunk_id, text_norm, payload))
+                    chunks_for_vectors.append((chunk_id, planned_chunk.text_norm, payload))
 
                 # batch flush
                 if len(chunk_rows) >= OS_BULK_BATCH:

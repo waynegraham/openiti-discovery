@@ -129,7 +129,7 @@ def test_restart_resume_matches_uninterrupted(monkeypatch):
     monkeypatch.setattr(ingest_run, "os_bulk_index", fake_os_bulk_index)
     monkeypatch.setattr(ingest_run, "sha256_file", lambda *_args, **_kwargs: "checksum")
     monkeypatch.setattr(ingest_run, "read_text_file", lambda *_args, **_kwargs: "######OpenITI#\nalpha beta gamma delta epsilon zeta")
-    monkeypatch.setattr(ingest_run, "normalize_arabic_script", lambda text: " ".join(text.splitlines()[1].split()))
+    monkeypatch.setattr(ingest_run, "normalize_arabic_script", lambda text: " ".join(text.split()))
     monkeypatch.setattr(ingest_run, "tqdm", lambda x, **_kwargs: x)
 
     monkeypatch.setattr(ingest_run, "EMBEDDINGS_ENABLED", False)

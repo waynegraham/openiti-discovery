@@ -76,6 +76,7 @@ Out of scope for Milestone 3:
 ## Milestone 4: Chunking and Text Fidelity
 
 Scope: Replace MVP chunking/text handling with structure-aware chunking plus real raw text slices.
+Status: Complete (February 8, 2026)
 
 Acceptance criteria:
 - Chunking prefers structural boundaries when available, with fixed-size fallback.
@@ -83,6 +84,14 @@ Acceptance criteria:
 - `start_char_offset` and `end_char_offset` are populated for new ingests.
 - Chunk IDs remain stable across reruns with unchanged config/input.
 - Regression test verifies chunk continuity (`prev_chunk_id` and `next_chunk_id`) and offsets.
+
+Implementation notes:
+- Added a structure-aware chunk planner that splits by heading lines and chunks within sections.
+- Added fixed-size fallback chunking when no structural headings are present.
+- Replaced MVP `text_raw = text_norm` behavior with real raw text slices derived from absolute character spans.
+- Populated `start_char_offset` and `end_char_offset` from raw text word spans during ingest.
+- Kept deterministic chunk IDs (`{version_id}::{chunk_index}`) with stable ordering across reruns.
+- Expanded ingest tests with Milestone 4 regression coverage for offsets, continuity, and ID stability.
 
 ## Milestone 5: Reading Experience Completion
 
