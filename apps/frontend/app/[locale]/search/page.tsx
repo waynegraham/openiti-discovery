@@ -14,6 +14,7 @@ import { cn } from "../../../lib/utils";
 
 type FacetBucket = {
   key: string;
+  label?: string;
   count: number;
 };
 
@@ -26,19 +27,24 @@ type SearchHit = {
 
 type SearchResponse = {
   query: string;
-  mode: string;
+  requested_mode: string;
+  effective_mode: string;
+  warnings: string[];
   total: number;
   page: number;
   size: number;
   results: SearchHit[];
   facets: Record<string, FacetBucket[]>;
+  embedding_model: string;
+  embedding_model_version: string;
+  normalization_version: string;
 };
 
 const SIZE_OPTIONS = [20, 50, 100];
 const MODE_OPTIONS = [
   { value: "bm25", label: "BM25", disabled: false },
-  { value: "vector", label: "Vector", disabled: true },
-  { value: "hybrid", label: "Hybrid", disabled: true },
+  { value: "vector", label: "Vector", disabled: false },
+  { value: "hybrid", label: "Hybrid", disabled: false },
 ];
 
 function getApiBase() {
@@ -59,6 +65,24 @@ function safeInt(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseCsvParam(value?: string) {
+  if (!value) return [] as string[];
+  return value
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+function toCsvParam(values: string[]) {
+  return values.join(",");
+}
+
+function toggleValue(values: string[], value: string) {
+  return values.includes(value)
+    ? values.filter((v) => v !== value)
+    : [...values, value];
+}
+
 function highlightSnippet(hit: SearchHit) {
   const h = hit.highlight || {};
   const content = h["content"]?.[0] || h["content.nostem"]?.[0];
@@ -68,7 +92,7 @@ function highlightSnippet(hit: SearchHit) {
   const src = hit.source || {};
   const fallback = typeof src.content === "string" ? src.content : "";
   return {
-    html: fallback ? `${fallback.slice(0, 280)}…` : "",
+    html: fallback ? `${fallback.slice(0, 280)}...` : "",
     isHtml: false,
   };
 }
@@ -90,6 +114,11 @@ export default async function SearchPage({
     page?: string;
     size?: string;
     mode?: string;
+    period?: string;
+    region?: string;
+    tags?: string;
+    langs?: string;
+    version?: string;
   }>;
 }) {
   const { locale } = await params;
@@ -97,7 +126,11 @@ export default async function SearchPage({
   const t = await getTranslations({ locale, namespace: "search" });
   const resolvedSearchParams = await (searchParams ?? Promise.resolve({}));
   const query = resolvedSearchParams.q?.trim() || t("defaultQuery");
-  const mode = "bm25";
+  const requestedMode =
+    resolvedSearchParams.mode &&
+    ["bm25", "vector", "hybrid"].includes(resolvedSearchParams.mode)
+      ? resolvedSearchParams.mode
+      : "bm25";
   const size = SIZE_OPTIONS.includes(
     safeInt(resolvedSearchParams.size, SIZE_OPTIONS[0])
   )
@@ -105,12 +138,25 @@ export default async function SearchPage({
     : SIZE_OPTIONS[0];
   const page = Math.max(1, safeInt(resolvedSearchParams.page, 1));
 
-  const apiUrl = buildSearchUrl(getApiBase(), {
+  const selectedPeriod = parseCsvParam(resolvedSearchParams.period);
+  const selectedRegion = parseCsvParam(resolvedSearchParams.region);
+  const selectedTags = parseCsvParam(resolvedSearchParams.tags);
+  const selectedLangs = parseCsvParam(resolvedSearchParams.langs);
+  const selectedVersion = parseCsvParam(resolvedSearchParams.version);
+
+  const apiParams: Record<string, string> = {
     q: query,
-    mode,
+    mode: requestedMode,
     size: String(size),
     page: String(page),
-  });
+  };
+  if (selectedPeriod.length) apiParams.period = toCsvParam(selectedPeriod);
+  if (selectedRegion.length) apiParams.region = toCsvParam(selectedRegion);
+  if (selectedTags.length) apiParams.tags = toCsvParam(selectedTags);
+  if (selectedLangs.length) apiParams.langs = toCsvParam(selectedLangs);
+  if (selectedVersion.length) apiParams.version = toCsvParam(selectedVersion);
+
+  const apiUrl = buildSearchUrl(getApiBase(), apiParams);
 
   let data: SearchResponse | null = null;
   try {
@@ -123,7 +169,9 @@ export default async function SearchPage({
   }
 
   const results = data?.results ?? [];
-  const facets = data?.facets ?? {};
+  const effectiveMode = data?.effective_mode ?? requestedMode;
+  const showFacets = effectiveMode === "bm25";
+  const facets = showFacets ? data?.facets ?? {} : {};
   const total = data?.total ?? results.length;
   const totalPages = Math.max(1, Math.ceil(total / size));
 
@@ -136,22 +184,67 @@ export default async function SearchPage({
 
   const baseParams = {
     q: query,
-    mode,
+    mode: requestedMode,
     size: String(size),
+    ...(selectedPeriod.length ? { period: toCsvParam(selectedPeriod) } : {}),
+    ...(selectedRegion.length ? { region: toCsvParam(selectedRegion) } : {}),
+    ...(selectedTags.length ? { tags: toCsvParam(selectedTags) } : {}),
+    ...(selectedLangs.length ? { langs: toCsvParam(selectedLangs) } : {}),
+    ...(selectedVersion.length ? { version: toCsvParam(selectedVersion) } : {}),
   };
+
+  const buildPageHref = (params: Record<string, string>) =>
+    `/${locale}/search?${new URLSearchParams(params).toString()}`;
+
+  const facetQueryFor = (facet: string, value: string) => {
+    const next = {
+      period: selectedPeriod,
+      region: selectedRegion,
+      tags: selectedTags,
+      lang: selectedLangs,
+      version: selectedVersion,
+    };
+
+    if (facet === "period") next.period = toggleValue(next.period, value);
+    if (facet === "region") next.region = toggleValue(next.region, value);
+    if (facet === "tags") next.tags = toggleValue(next.tags, value);
+    if (facet === "lang") next.lang = toggleValue(next.lang, value);
+    if (facet === "version") next.version = toggleValue(next.version, value);
+
+    return {
+      q: query,
+      mode: requestedMode,
+      size: String(size),
+      page: "1",
+      ...(next.period.length ? { period: toCsvParam(next.period) } : {}),
+      ...(next.region.length ? { region: toCsvParam(next.region) } : {}),
+      ...(next.tags.length ? { tags: toCsvParam(next.tags) } : {}),
+      ...(next.lang.length ? { langs: toCsvParam(next.lang) } : {}),
+      ...(next.version.length ? { version: toCsvParam(next.version) } : {}),
+    };
+  };
+
+  const activeFilters = [
+    ...selectedPeriod.map((key) => ({ facet: "period", key })),
+    ...selectedRegion.map((key) => ({ facet: "region", key })),
+    ...selectedTags.map((key) => ({ facet: "tags", key })),
+    ...selectedLangs.map((key) => ({ facet: "lang", key })),
+    ...selectedVersion.map((key) => ({ facet: "version", key })),
+  ];
+
   const prevPageUrl =
     page > 1
-      ? `/${locale}/search?${new URLSearchParams({
+      ? buildPageHref({
           ...baseParams,
           page: String(page - 1),
-        }).toString()}`
+        })
       : null;
   const nextPageUrl =
     page < totalPages
-      ? `/${locale}/search?${new URLSearchParams({
+      ? buildPageHref({
           ...baseParams,
           page: String(page + 1),
-        }).toString()}`
+        })
       : null;
 
   return (
@@ -199,12 +292,28 @@ export default async function SearchPage({
               defaultValue={query}
               className="h-12 flex-1 rounded-full bg-background/80 px-5 text-base"
             />
+            <input type="hidden" name="mode" value={requestedMode} />
+            {selectedPeriod.length ? (
+              <input type="hidden" name="period" value={toCsvParam(selectedPeriod)} />
+            ) : null}
+            {selectedRegion.length ? (
+              <input type="hidden" name="region" value={toCsvParam(selectedRegion)} />
+            ) : null}
+            {selectedTags.length ? (
+              <input type="hidden" name="tags" value={toCsvParam(selectedTags)} />
+            ) : null}
+            {selectedLangs.length ? (
+              <input type="hidden" name="langs" value={toCsvParam(selectedLangs)} />
+            ) : null}
+            {selectedVersion.length ? (
+              <input type="hidden" name="version" value={toCsvParam(selectedVersion)} />
+            ) : null}
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 <span>{t("modeLabel")}</span>
                 <select
                   name="mode"
-                  defaultValue={mode}
+                  defaultValue={requestedMode}
                   className="h-11 rounded-full border border-input bg-background/80 px-3 text-foreground shadow-sm"
                 >
                   {MODE_OPTIONS.map((opt) => (
@@ -214,6 +323,9 @@ export default async function SearchPage({
                   ))}
                 </select>
               </label>
+              <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                {effectiveMode}
+              </span>
               <label className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 <span>{t("pageSizeLabel")}</span>
                 <select
@@ -239,6 +351,17 @@ export default async function SearchPage({
               </button>
             </div>
           </form>
+          {data?.warnings?.length ? (
+            <div className="text-sm text-amber-700">
+              {data.warnings
+                .map((code) =>
+                  code === "qdrant_unavailable_fallback_bm25"
+                    ? t("warningQdrantFallback")
+                    : code
+                )
+                .join(", ")}
+            </div>
+          ) : null}
         </header>
 
         <section className="grid gap-8 lg:grid-cols-[280px_1fr]">
@@ -248,94 +371,163 @@ export default async function SearchPage({
                 <CardTitle className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                   {t("filtersTitle")}
                 </CardTitle>
-                <span className="text-xs font-semibold text-muted-foreground">
+                <a
+                  href={buildPageHref({
+                    q: query,
+                    mode: requestedMode,
+                    size: String(size),
+                    page: "1",
+                  })}
+                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                >
                   {t("clearFilters")}
-                </span>
+                </a>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    {t("activeFilters")}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge className="rounded-full">{t("noActiveFilters")}</Badge>
-                  </div>
-                </div>
+                {showFacets ? (
+                  <>
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        {t("activeFilters")}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {activeFilters.length ? (
+                          activeFilters.map((af) => (
+                            <a
+                              key={`${af.facet}:${af.key}`}
+                              href={buildPageHref(facetQueryFor(af.facet, af.key))}
+                              className={cn(
+                                buttonVariants({ variant: "secondary", size: "sm" }),
+                                "rounded-full"
+                              )}
+                            >
+                              {af.key}
+                            </a>
+                          ))
+                        ) : (
+                          <Badge className="rounded-full">{t("noActiveFilters")}</Badge>
+                        )}
+                      </div>
+                    </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold">{t("filterPeriod")}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {facetList("period").map((item) => (
-                      <Badge
-                        key={item.key}
-                        variant="outline"
-                        className="border-border/70 text-muted-foreground"
-                      >
-                        {item.key} ({item.count})
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold">{t("filterPeriod")}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {facetList("period").map((item) => (
+                          <a
+                            key={item.key}
+                            href={buildPageHref(facetQueryFor("period", item.key))}
+                            className={cn(
+                              buttonVariants({
+                                variant: selectedPeriod.includes(item.key)
+                                  ? "secondary"
+                                  : "outline",
+                                size: "sm",
+                              }),
+                              "rounded-full"
+                            )}
+                          >
+                            {item.label || item.key} ({item.count})
+                          </a>
+                        ))}
+                      </div>
+                    </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold">{t("filterRegion")}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {facetList("region").map((item) => (
-                      <Badge
-                        key={item.key}
-                        variant="outline"
-                        className="border-border/70 text-muted-foreground"
-                      >
-                        {item.key} ({item.count})
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold">{t("filterRegion")}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {facetList("region").map((item) => (
+                          <a
+                            key={item.key}
+                            href={buildPageHref(facetQueryFor("region", item.key))}
+                            className={cn(
+                              buttonVariants({
+                                variant: selectedRegion.includes(item.key)
+                                  ? "secondary"
+                                  : "outline",
+                                size: "sm",
+                              }),
+                              "rounded-full"
+                            )}
+                          >
+                            {item.label || item.key} ({item.count})
+                          </a>
+                        ))}
+                      </div>
+                    </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold">{t("filterLanguage")}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {facetList("lang").map((item) => (
-                      <Badge
-                        key={item.key}
-                        variant="outline"
-                        className="border-border/70 text-muted-foreground"
-                      >
-                        {item.key} ({item.count})
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold">{t("filterLanguage")}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {facetList("lang").map((item) => (
+                          <a
+                            key={item.key}
+                            href={buildPageHref(facetQueryFor("lang", item.key))}
+                            className={cn(
+                              buttonVariants({
+                                variant: selectedLangs.includes(item.key)
+                                  ? "secondary"
+                                  : "outline",
+                                size: "sm",
+                              }),
+                              "rounded-full"
+                            )}
+                          >
+                            {item.label || item.key} ({item.count})
+                          </a>
+                        ))}
+                      </div>
+                    </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold">{t("filterVersion")}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {facetList("version").map((item) => (
-                      <Badge
-                        key={item.key}
-                        variant="outline"
-                        className="border-border/70 text-muted-foreground"
-                      >
-                        {item.key} ({item.count})
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold">{t("filterVersion")}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {facetList("version").map((item) => (
+                          <a
+                            key={item.key}
+                            href={buildPageHref(facetQueryFor("version", item.key))}
+                            className={cn(
+                              buttonVariants({
+                                variant: selectedVersion.includes(item.key)
+                                  ? "secondary"
+                                  : "outline",
+                                size: "sm",
+                              }),
+                              "rounded-full"
+                            )}
+                          >
+                            {item.label || item.key} ({item.count})
+                          </a>
+                        ))}
+                      </div>
+                    </div>
 
-                <div className="space-y-3">
-                  <p className="text-sm font-semibold">{t("filterTags")}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {facetList("tags").map((item) => (
-                      <Badge
-                        key={item.key}
-                        variant="outline"
-                        className="border-border/70 text-muted-foreground"
-                      >
-                        {item.key} ({item.count})
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold">{t("filterTags")}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {facetList("tags").map((item) => (
+                          <a
+                            key={item.key}
+                            href={buildPageHref(facetQueryFor("tags", item.key))}
+                            className={cn(
+                              buttonVariants({
+                                variant: selectedTags.includes(item.key)
+                                  ? "secondary"
+                                  : "outline",
+                                size: "sm",
+                              }),
+                              "rounded-full"
+                            )}
+                          >
+                            {item.label || item.key} ({item.count})
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-sm text-muted-foreground">{t("facetsBm25Only")}</div>
+                )}
               </CardContent>
             </Card>
           </aside>

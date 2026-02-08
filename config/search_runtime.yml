@@ -1,0 +1,36 @@
+version: "1.0"
+
+search:
+  max_query_length_chars: 256
+  default_page_size: 20
+  max_page_size: 100
+
+embedding:
+  max_batch_size: 32
+  model_name: "intfloat/multilingual-e5-large"
+  model_version: "latest"
+  route_by_language: true
+  language_model_family:
+    ara: "multilingual-e5"
+    fas: "multilingual-e5"
+    ota: "multilingual-e5"
+    default: "multilingual-e5"
+
+hybrid:
+  rrf:
+    enabled: true
+    rrf_k: 60
+  candidate_pool:
+    multiplier_per_page_size: 5
+    min: 100
+    max: 1000
+
+timeouts_ms:
+  search_soft_target: 1500
+  search_hard_timeout: 3000
+  embed_hard_timeout: 3000
+
+fallbacks:
+  qdrant_unavailable:
+    enabled: true
+    warning_code: "qdrant_unavailable_fallback_bm25"

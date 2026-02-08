@@ -1,0 +1,13 @@
+version: "1.0"
+
+pipeline:
+  # Canonical normalization used by ingest and query embedding.
+  remove_tatweel: true
+  remove_diacritics: true
+  normalize_alef_variants: true
+  normalize_persian_kaf_ya: true
+  normalize_hamza_conservative: true
+
+implementation_notes:
+  - "Normalization is applied to text_norm for indexing and embedding."
+  - "Raw text is preserved separately when available."

@@ -17,6 +17,7 @@ alembic>=1.18
 python-dotenv>=1.2
 pydantic>=2.12
 pydantic-settings>=2.12
+PyYAML>=6.0
 
 # ----------------------------
 # OpenSearch (BM25 search)

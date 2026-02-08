@@ -52,6 +52,8 @@
     "statTags": "Tags",
     "pageLabel": "Page {page} of {totalPages}",
     "prevPage": "Previous",
-    "nextPage": "Next"
+    "nextPage": "Next",
+    "warningQdrantFallback": "Vector engine unavailable; automatically fell back to BM25.",
+    "facetsBm25Only": "Facet counts are available in BM25 mode only."
   }
 }

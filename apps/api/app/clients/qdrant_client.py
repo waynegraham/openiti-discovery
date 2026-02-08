@@ -31,8 +31,13 @@ def vector_search(
     *,
     query_vector: list[float],
     limit: int,
+    offset: int,
     langs: list[str] | None,
     pri_only: bool,
+    period: list[str] | None = None,
+    region: list[str] | None = None,
+    tags: list[str] | None = None,
+    version: list[str] | None = None,
 ) -> list[dict]:
     """
     Minimal vector search against Qdrant.
@@ -45,6 +50,14 @@ def vector_search(
         must.append({"key": "is_pri", "match": {"value": True}})
     if langs:
         must.append({"key": "lang", "match": {"any": langs}})
+    if period:
+        must.append({"key": "period", "match": {"any": period}})
+    if region:
+        must.append({"key": "region", "match": {"any": region}})
+    if tags:
+        must.append({"key": "tags", "match": {"any": tags}})
+    if version:
+        must.append({"key": "version_label", "match": {"any": version}})
 
     flt = {"must": must} if must else None
 
@@ -52,6 +65,7 @@ def vector_search(
         collection_name=settings.QDRANT_COLLECTION,
         query_vector=query_vector,
         limit=limit,
+        offset=offset,
         with_payload=True,
         with_vectors=False,
         query_filter=flt,
@@ -68,3 +82,33 @@ def vector_search(
             }
         )
     return out
+
+
+def vector_count(
+    *,
+    langs: list[str] | None,
+    pri_only: bool,
+    period: list[str] | None = None,
+    region: list[str] | None = None,
+    tags: list[str] | None = None,
+    version: list[str] | None = None,
+) -> int:
+    q = get_qdrant()
+
+    must = []
+    if pri_only:
+        must.append({"key": "is_pri", "match": {"value": True}})
+    if langs:
+        must.append({"key": "lang", "match": {"any": langs}})
+    if period:
+        must.append({"key": "period", "match": {"any": period}})
+    if region:
+        must.append({"key": "region", "match": {"any": region}})
+    if tags:
+        must.append({"key": "tags", "match": {"any": tags}})
+    if version:
+        must.append({"key": "version_label", "match": {"any": version}})
+
+    flt = {"must": must} if must else None
+    res = q.count(collection_name=settings.QDRANT_COLLECTION, count_filter=flt, exact=False)
+    return int(getattr(res, "count", 0) or 0)

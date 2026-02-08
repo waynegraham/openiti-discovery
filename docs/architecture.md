@@ -296,3 +296,16 @@ The OpenITI Discovery architecture is designed to:
 * evolve safely as methods and expectations change
 
 It favors clarity, explicit modeling, and recoverable processes over cleverness.
+---
+
+## Search API Addendum (2026-02-08)
+
+To align architecture with current retrieval behavior:
+
+- FastAPI exposes `POST /embed` (batch-first) for query/passage embeddings.
+- `GET /search` returns both `requested_mode` and `effective_mode`.
+- Hybrid mode uses classic RRF fusion with configurable `rrf_k` and candidate depth.
+- If Qdrant is unavailable in hybrid requests, API degrades to BM25 (`effective_mode=bm25`) and returns warning `qdrant_unavailable_fallback_bm25`.
+- Facets are computed and returned only in BM25 effective mode.
+- Highlight output is sanitized to allow `<em>` only.
+- Canonical text normalization is shared between ingest and embedding/search via config.

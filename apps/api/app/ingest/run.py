@@ -21,7 +21,7 @@ from ..db import get_engine
 from ..settings import settings
 from ..clients.opensearch_client import ensure_write_index_target, get_opensearch
 from ..clients.qdrant_client import get_qdrant
-
+from ..text_normalization import normalize_arabic_script
 # Embeddings
 from sentence_transformers import SentenceTransformer
 
@@ -53,37 +53,6 @@ OS_BULK_BATCH = int(os.getenv("OPENSEARCH_BULK_BATCH", "500") or "500")
 
 # Curated tags (for faceting)
 CURATED_TAGS_PATH = os.getenv("CURATED_TAGS_PATH", "")
-
-
-# ---------------------------
-# Normalization (Arabic-script)
-# ---------------------------
-
-AR_DIACRITICS_RE = re.compile(r"[\u064B-\u0652\u0670]")  # harakat + superscript alef
-TATWEEL_RE = re.compile(r"\u0640")  # ـ
-
-# conservative character normalizations
-CHAR_MAP = str.maketrans({
-    "ٱ": "ا",
-    "أ": "ا",
-    "إ": "ا",
-    "آ": "ا",
-    "ى": "ي",
-    "ة": "ه",
-    "ؤ": "و",
-    "ئ": "ي",
-    # Persian variants commonly present in Arabic-script corpora
-    "ك": "ک",
-    "ي": "ی",
-})
-
-def normalize_arabic_script(s: str) -> str:
-    s = TATWEEL_RE.sub("", s)
-    s = AR_DIACRITICS_RE.sub("", s)
-    s = s.translate(CHAR_MAP)
-    # collapse whitespace
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
 
 
 # ---------------------------
@@ -1089,3 +1058,4 @@ def _embed_and_upsert(model: SentenceTransformer, chunks_for_vectors: List[Tuple
 
 if __name__ == "__main__":
     run()
+

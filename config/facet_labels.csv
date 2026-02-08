@@ -1,0 +1,8 @@
+﻿facet,key,label_en,label_ar,notes,active
+period,GAL@period-premuhammad,Pre-Muhammad,ما قبل محمد,Initial seed label,true
+period,GAL@period-muhammad,Muhammad,محمد,Initial seed label,true
+version,PRI,Primary,أساسي,Derived from status=pri,true
+version,ALT,Alternate,بديل,Derived from status=sec,true
+lang,ara,Arabic,العربية,Language code label,true
+lang,fas,Persian,الفارسية,Language code label,true
+lang,ota,Ottoman Turkish,العثمانية,Language code label,true

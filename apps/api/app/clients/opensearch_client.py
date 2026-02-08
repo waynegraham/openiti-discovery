@@ -88,6 +88,10 @@ def bm25_search(
     from_: int,
     langs: list[str] | None,
     pri_only: bool,
+    period: list[str] | None = None,
+    region: list[str] | None = None,
+    tags: list[str] | None = None,
+    version: list[str] | None = None,
     include_aggs: bool = True,
 ) -> dict:
     """
@@ -99,6 +103,14 @@ def bm25_search(
         filters.append({"term": {"is_pri": True}})
     if langs:
         filters.append({"terms": {"lang": langs}})
+    if period:
+        filters.append({"terms": {"period": period}})
+    if region:
+        filters.append({"terms": {"region": region}})
+    if tags:
+        filters.append({"terms": {"tags": tags}})
+    if version:
+        filters.append({"terms": {"version_label": version}})
 
     body = {
         "size": size,
@@ -142,3 +154,66 @@ def bm25_search(
 
     client = get_opensearch()
     return client.search(index=settings.OPENSEARCH_INDEX_CHUNKS, body=body)
+
+
+def fetch_sources_by_chunk_ids(chunk_ids: list[str]) -> dict[str, dict]:
+    if not chunk_ids:
+        return {}
+    client = get_opensearch()
+    body = {
+        "size": len(chunk_ids),
+        "query": {"terms": {"chunk_id": chunk_ids}},
+    }
+    res = client.search(index=settings.OPENSEARCH_INDEX_CHUNKS, body=body)
+    out: dict[str, dict] = {}
+    for hit in res.get("hits", {}).get("hits", []):
+        src = hit.get("_source") or {}
+        cid = src.get("chunk_id") or hit.get("_id")
+        if cid:
+            out[str(cid)] = src
+    return out
+
+
+def filter_chunk_ids(
+    chunk_ids: list[str],
+    *,
+    langs: list[str] | None,
+    pri_only: bool,
+    period: list[str] | None = None,
+    region: list[str] | None = None,
+    tags: list[str] | None = None,
+    version: list[str] | None = None,
+) -> set[str]:
+    if not chunk_ids:
+        return set()
+
+    filters = [{"terms": {"chunk_id": chunk_ids}}]
+    if pri_only:
+        filters.append({"term": {"is_pri": True}})
+    if langs:
+        filters.append({"terms": {"lang": langs}})
+    if period:
+        filters.append({"terms": {"period": period}})
+    if region:
+        filters.append({"terms": {"region": region}})
+    if tags:
+        filters.append({"terms": {"tags": tags}})
+    if version:
+        filters.append({"terms": {"version_label": version}})
+
+    client = get_opensearch()
+    res = client.search(
+        index=settings.OPENSEARCH_INDEX_CHUNKS,
+        body={
+            "size": len(chunk_ids),
+            "_source": ["chunk_id"],
+            "query": {"bool": {"filter": filters}},
+        },
+    )
+    allowed: set[str] = set()
+    for hit in res.get("hits", {}).get("hits", []):
+        src = hit.get("_source") or {}
+        cid = src.get("chunk_id") or hit.get("_id")
+        if cid:
+            allowed.add(str(cid))
+    return allowed
