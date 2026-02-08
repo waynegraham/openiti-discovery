@@ -5,12 +5,19 @@ This plan sequences implementation work into concrete milestones with acceptance
 ## Milestone 1: Platform Integrity (Hard Blockers)
 
 Scope: Fix invalid OpenSearch template and validate index/alias bootstrap path.
+Status: Complete (February 8, 2026)
 
 Acceptance criteria:
 - `opensearch/templates/openiti_chunks_template.json` parses as valid JSON.
 - Template apply command succeeds against local OpenSearch with no manual edits.
 - Versioned index creation plus alias attach works, and writes to alias succeed.
 - A smoke query against alias returns HTTP 200.
+
+Implementation notes:
+- Added `make template-validate` to syntax-check template JSON before apply.
+- Added `make smoke-alias` to validate alias write and query path.
+- Added `make milestone-1` to run the full bootstrap integrity sequence.
+- Updated alias action format for OpenSearch 3 compatibility (`must_exist:false` on remove).
 
 ## Milestone 2: Retrieval Filter Correctness (Vector/Hybrid)
 

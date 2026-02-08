@@ -134,26 +134,29 @@ docker compose exec api alembic upgrade head
 
 ### 5. Create OpenSearch Indices
 
-Apply the template:
+Preferred (single command, includes template JSON validation and alias smoke test):
 
 ```bash
-curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template \
+make milestone-1
+```
+
+Manual equivalent:
+
+```bash
+python -m json.tool opensearch/templates/openiti_chunks_template.json
+curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template_v1 \
   -H "Content-Type: application/json" \
-  -d @opensearch/templates/openiti_chunks_template.json
-```
-
-Create an initial versioned index:
-
-```bash
-curl -X PUT http://localhost:9200/openiti_chunks_v2
-```
-
-Attach the stable alias and mark the write index:
-
-```bash
+  --data-binary @opensearch/templates/openiti_chunks_template.json
+curl -X PUT http://localhost:9200/openiti_chunks_v1
 curl -X POST http://localhost:9200/_aliases \
   -H "Content-Type: application/json" \
-  -d '{"actions":[{"add":{"index":"openiti_chunks_v2","alias":"openiti_chunks","is_write_index":true}}]}'
+  -d '{"actions":[{"remove":{"index":"openiti_chunks_v*","alias":"openiti_chunks","must_exist":false}},{"add":{"index":"openiti_chunks_v1","alias":"openiti_chunks","is_write_index":true}}]}'
+```
+
+You can run alias read/write verification separately:
+
+```bash
+make smoke-alias
 ```
 
 ---
@@ -275,6 +278,7 @@ Active development. Core live search wiring is now in place; expect ongoing iter
 ## Roadmap
 
 Milestones and acceptance criteria are tracked in `docs/milestone-plan.dm`.
+Milestone 1 (Platform Integrity) was completed on February 8, 2026.
 
 ---
 
