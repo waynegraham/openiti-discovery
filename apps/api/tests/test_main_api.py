@@ -324,3 +324,143 @@ def test_search_hybrid_forwards_filters_to_bm25_and_vector(client, monkeypatch):
     assert captured["bm25_search"]["version"] == ["ALT"]
     assert captured["vector_search"]["version"] == ["ALT"]
     assert captured["vector_count"]["version"] == ["ALT"]
+
+
+def test_get_work_detail_returns_work(client, monkeypatch):
+    monkeypatch.setattr(main, "get_engine", lambda: object())
+    monkeypatch.setattr(
+        main,
+        "get_work",
+        lambda engine, work_id: {
+            "work_id": "w1",
+            "author_id": "a1",
+            "title_ar": "t_ar",
+            "title_latn": "t_latn",
+            "author_name_ar": "n_ar",
+            "author_name_latn": "n_latn",
+            "death_year_ah": 600,
+            "death_year_ce": 1203,
+            "work_year_start_ce": 1190,
+            "work_year_end_ce": 1200,
+        },
+    )
+
+    res = client.get("/works/w1")
+    assert res.status_code == 200
+    assert res.json()["work_id"] == "w1"
+    assert res.json()["author_id"] == "a1"
+
+
+def test_get_work_detail_404(client, monkeypatch):
+    monkeypatch.setattr(main, "get_engine", lambda: object())
+    monkeypatch.setattr(main, "get_work", lambda engine, work_id: None)
+
+    res = client.get("/works/missing")
+    assert res.status_code == 404
+    assert res.json()["detail"] == "work not found"
+
+
+def test_get_versions_for_work_uses_locale_and_query_lang_preference(client, monkeypatch):
+    monkeypatch.setattr(main, "get_engine", lambda: object())
+    monkeypatch.setattr(main, "get_work", lambda engine, work_id: {"work_id": work_id, "author_id": "a1"})
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_list_work_versions(engine, work_id, preferred_langs):
+        captured["preferred_langs"] = list(preferred_langs)
+        return [
+            {
+                "version_id": "v1",
+                "work_id": work_id,
+                "lang": "ara",
+                "is_pri": True,
+                "source_uri": None,
+                "repo_path": "repo/v1",
+            }
+        ]
+
+    monkeypatch.setattr(main, "list_work_versions", fake_list_work_versions)
+
+    res = client.get(
+        "/works/w1/versions",
+        params={"locale": "ar", "preferred_langs": "fas,ara"},
+    )
+
+    assert res.status_code == 200
+    assert captured["preferred_langs"][:2] == ["fas", "ara"]
+    assert res.json()[0]["version_id"] == "v1"
+
+
+def test_get_versions_for_work_404_when_work_missing(client, monkeypatch):
+    monkeypatch.setattr(main, "get_engine", lambda: object())
+    monkeypatch.setattr(main, "get_work", lambda engine, work_id: None)
+
+    res = client.get("/works/w1/versions")
+    assert res.status_code == 404
+    assert res.json()["detail"] == "work not found"
+
+
+def test_resolve_version_chunk_returns_exact_or_lower_match(client, monkeypatch):
+    monkeypatch.setattr(main, "get_engine", lambda: object())
+    monkeypatch.setattr(main, "get_work", lambda engine, work_id: {"work_id": work_id, "author_id": "a1"})
+    monkeypatch.setattr(
+        main,
+        "list_work_versions",
+        lambda engine, work_id, preferred_langs: [{"version_id": "v1"}],
+    )
+    monkeypatch.setattr(
+        main,
+        "resolve_chunk_for_version",
+        lambda engine, work_id, version_id, target_chunk_index: {
+            "chunk_id": "v1::7",
+            "chunk_index": 7,
+        },
+    )
+
+    res = client.get(
+        "/works/w1/versions/v1/chunks/resolve",
+        params={"target_chunk_index": 8},
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["resolved_chunk_id"] == "v1::7"
+    assert body["resolved_chunk_index"] == 7
+    assert body["requested_chunk_index"] == 8
+
+
+def test_resolve_version_chunk_404_when_no_lower_chunk(client, monkeypatch):
+    monkeypatch.setattr(main, "get_engine", lambda: object())
+    monkeypatch.setattr(main, "get_work", lambda engine, work_id: {"work_id": work_id, "author_id": "a1"})
+    monkeypatch.setattr(
+        main,
+        "list_work_versions",
+        lambda engine, work_id, preferred_langs: [{"version_id": "v1"}],
+    )
+    monkeypatch.setattr(main, "resolve_chunk_for_version", lambda *args, **kwargs: None)
+
+    res = client.get(
+        "/works/w1/versions/v1/chunks/resolve",
+        params={"target_chunk_index": 0},
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "no chunk at or below target_chunk_index"
+
+
+def test_resolve_version_chunk_404_when_version_not_in_work(client, monkeypatch):
+    monkeypatch.setattr(main, "get_engine", lambda: object())
+    monkeypatch.setattr(main, "get_work", lambda engine, work_id: {"work_id": work_id, "author_id": "a1"})
+    monkeypatch.setattr(
+        main,
+        "list_work_versions",
+        lambda engine, work_id, preferred_langs: [{"version_id": "v1"}],
+    )
+
+    res = client.get(
+        "/works/w1/versions/v2/chunks/resolve",
+        params={"target_chunk_index": 0},
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "version not found for work"

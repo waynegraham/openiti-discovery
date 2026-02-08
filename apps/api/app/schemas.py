@@ -61,3 +61,33 @@ class ChunkResponse(BaseModel):
     text_raw: str
     prev_chunk_id: str | None = None
     next_chunk_id: str | None = None
+
+
+class WorkResponse(BaseModel):
+    work_id: str
+    author_id: str
+    title_ar: str | None = None
+    title_latn: str | None = None
+    author_name_ar: str | None = None
+    author_name_latn: str | None = None
+    death_year_ah: int | None = None
+    death_year_ce: int | None = None
+    work_year_start_ce: int | None = None
+    work_year_end_ce: int | None = None
+
+
+class WorkVersionResponse(BaseModel):
+    version_id: str
+    work_id: str
+    lang: str
+    is_pri: bool
+    source_uri: str | None = None
+    repo_path: str
+
+
+class ChunkResolveResponse(BaseModel):
+    work_id: str
+    version_id: str
+    requested_chunk_index: int
+    resolved_chunk_id: str
+    resolved_chunk_index: int

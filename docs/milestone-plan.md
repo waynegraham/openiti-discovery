@@ -96,6 +96,7 @@ Implementation notes:
 ## Milestone 5: Reading Experience Completion
 
 Scope: Implement real navigation for result actions and contextual reading.
+Status: Complete (February 8, 2026)
 
 Acceptance criteria:
 - `Open Passage` opens a functional passage view using `chunk_id`.
@@ -103,6 +104,51 @@ Acceptance criteria:
 - Jump-to-context works via neighbor traversal.
 - Version switching is implemented for works with multiple versions.
 - Frontend integration test confirms route navigation and API wiring.
+
+Implementation plan:
+1. Add a dedicated passage route in frontend (`/[locale]/passage/[chunkId]`) that fetches `GET /chunks/{chunk_id}` and renders passage text plus metadata.
+2. Replace inert result-action buttons in `apps/frontend/app/[locale]/search/page.tsx` with real links:
+   - `Open Passage` -> `/${locale}/passage/${chunk_id}`
+   - `View Work` -> `/${locale}/work/${work_id}` (from result source)
+3. Add a work route (`/[locale]/work/[workId]`) to show work-level metadata and a list of available versions.
+4. Introduce backend work-detail endpoints for frontend hydration:
+   - `GET /works/{work_id}` returning title/author/date fields
+   - `GET /works/{work_id}/versions` returning version list (`version_id`, `lang`, `is_pri`, ordering fields)
+5. Extend the chunk API for version-scoped reading where needed:
+   - keep `GET /chunks/{chunk_id}` for deep links
+   - add resolver endpoint `GET /works/{work_id}/versions/{version_id}/chunks/resolve?target_chunk_index=...`
+   - resolver contract: return exact match when present; otherwise nearest lower `chunk_index`; if none exists, return `404`
+6. Implement passage neighbor navigation UI (`Previous` / `Next`) driven by `prev_chunk_id` and `next_chunk_id`, with disabled states at boundaries.
+7. Implement version switching from both passage and work views:
+   - choose a target chunk index from current passage
+   - resolve nearest chunk in selected version (exact  index, else nearest lower index, else `404`)
+   - navigate to resolved target chunk route
+8. Define deterministic version ordering for UI defaults and selectors:
+   - primary (`is_pri=true`) first
+   - then language-preferred order driven by user locale/query context
+   - then stable tie-breaker (`version_id`)
+9. Add shared frontend utilities for route building and fetch error handling (`404`, empty-version work, missing source fields in search hits).
+10. Add API unit tests for new work/version endpoints and version-switch chunk-resolution behavior.
+11. Add frontend integration tests (Next.js route/API integration, not full browser E2E yet) for:
+   - search result action navigation
+   - passage page data load via `chunk_id`
+   - neighbor traversal
+   - work page load and version switch
+   - locale parity for `en` and `ar` routes/pages
+12. Add Makefile/CI wiring to run frontend integration tests in milestone validation.
+
+Execution sequence:
+1. Land backend read endpoints and tests first (work detail, version list, version-chunk resolution).
+2. Land frontend routes and action-link wiring second (search -> passage/work overview).
+3. Land passage neighbor traversal and version switch mechanics third.
+4. Land frontend integration harness and CI wiring fourth.
+5. Gate completion on all acceptance criteria and green API + frontend integration tests.
+
+Out of scope for Milestone 5:
+- Full-text reader annotations, highlights persistence, or bookmarking.
+- Cross-work recommendations and editorial curation surfaces.
+- Mobile-native app behavior beyond responsive web parity.
+- Full Playwright browser E2E (deferred until after lightweight route/API integration tests).
 
 ## Milestone 6: Editorial/Config Workflow Completion
 

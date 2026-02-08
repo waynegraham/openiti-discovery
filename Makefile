@@ -35,7 +35,7 @@ endef
 
 .PHONY: help up down reset logs ps \
         wait migrate template-validate template index alias smoke-alias status milestone-1 \
-        init init-no-data ingest gpu-ingest \
+        init init-no-data ingest gpu-ingest frontend-test milestone-5 \
         eval-scaffold eval-import-forms eval-corpus-plan eval-qrels-audit \
         eval-qualitative eval-scalability-measure eval-run-subsets \
         eval-run eval-metrics eval-tables eval-record eval-all \
@@ -64,6 +64,8 @@ help:
 	@echo "  make init-no-data   - Same as init, but skip ingest"
 	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ara)"
 	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
+	@echo "  make frontend-test  - Run lightweight frontend route/API integration tests"
+	@echo "  make milestone-5    - Run backend API tests plus frontend integration tests for reading routes"
 	@echo "  make eval-scaffold  - Generate placeholder queries + qrels from paper query framework"
 	@echo "  make eval-import-forms - Convert expert CSV forms into queries.json and qrels.json"
 	@echo "  make eval-corpus-plan - Estimate INGEST_WORK_LIMIT for target corpus line counts"
@@ -208,6 +210,13 @@ gpu-ingest:
 	  -e EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED) \
 	  -e EMBEDDING_DEVICE=cuda \
 	  ingest_cuda
+
+frontend-test:
+	cd apps/frontend && npm run test
+
+milestone-5:
+	python -m pytest apps/api/tests/test_main_api.py -q
+	$(MAKE) frontend-test
 
 eval-run:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \

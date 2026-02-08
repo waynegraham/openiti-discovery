@@ -232,6 +232,9 @@ Search/embedding runtime behavior is configured in:
 * `POST /embed` -> batch embedding (`texts[]`, `input_type=query|passage`)
 * `GET /search` -> query OpenSearch/Qdrant with bm25/vector/hybrid modes
 * `GET /chunks/{chunk_id}` -> chunk with neighbors
+* `GET /works/{work_id}` -> work overview metadata
+* `GET /works/{work_id}/versions` -> ordered versions for a work (locale/query language aware)
+* `GET /works/{work_id}/versions/{version_id}/chunks/resolve?target_chunk_index={n}` -> resolve exact-or-lower chunk for version switching (404 when none exists)
 
 Search modes:
 

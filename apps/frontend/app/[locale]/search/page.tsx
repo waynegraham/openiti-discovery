@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
+import { getApiBase } from "../../../lib/api";
 import { cn } from "../../../lib/utils";
 
 type FacetBucket = {
@@ -46,14 +47,6 @@ const MODE_OPTIONS = [
   { value: "vector", label: "Vector", disabled: false },
   { value: "hybrid", label: "Hybrid", disabled: false },
 ];
-
-function getApiBase() {
-  return (
-    process.env.API_INTERNAL_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "http://localhost:8000"
-  );
-}
 
 function buildSearchUrl(base: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params);
@@ -594,6 +587,7 @@ export default async function SearchPage({
                   const tags = Array.isArray(src.tags) ? (src.tags as string[]) : [];
                   const version = (src.version_label as string) || "";
                   const type = (src.type as string) || "Passage";
+                  const workId = (src.work_id as string) || "";
                   const snippet = highlightSnippet(result);
 
                   return (
@@ -636,17 +630,26 @@ export default async function SearchPage({
                           ))}
                         </div>
                         <div className="flex flex-wrap gap-3 text-sm">
-                          <button className={cn(buttonVariants(), "rounded-full")}>
+                          <a
+                            href={`/${locale}/passage/${encodeURIComponent(result.chunk_id)}`}
+                            className={cn(buttonVariants(), "rounded-full")}
+                          >
                             {t("openPassage")}
-                          </button>
-                          <button
+                          </a>
+                          <a
+                            href={
+                              workId
+                                ? `/${locale}/work/${encodeURIComponent(workId)}`
+                                : "#"
+                            }
                             className={cn(
                               buttonVariants({ variant: "outline" }),
-                              "rounded-full"
+                              "rounded-full",
+                              !workId && "pointer-events-none opacity-50"
                             )}
                           >
                             {t("viewWork")}
-                          </button>
+                          </a>
                         </div>
                       </CardContent>
                     </Card>
