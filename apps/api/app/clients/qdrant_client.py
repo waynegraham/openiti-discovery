@@ -98,15 +98,27 @@ def vector_search(
         version=version,
     )
 
-    res = q.search(
-        collection_name=settings.QDRANT_COLLECTION,
-        query_vector=query_vector,
-        limit=limit,
-        offset=offset,
-        with_payload=True,
-        with_vectors=False,
-        query_filter=flt,
-    )
+    if hasattr(q, "query_points"):
+        res_obj = q.query_points(
+            collection_name=settings.QDRANT_COLLECTION,
+            query=query_vector,
+            limit=limit,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+            query_filter=flt,
+        )
+        res = getattr(res_obj, "points", None) or []
+    else:
+        res = q.search(
+            collection_name=settings.QDRANT_COLLECTION,
+            query_vector=query_vector,
+            limit=limit,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+            query_filter=flt,
+        )
 
     out = []
     for pt in res:

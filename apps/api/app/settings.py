@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # Search behavior
     DEFAULT_SIZE: int = int(_search_cfg.get("default_page_size", 20))
-    DEFAULT_PRI_ONLY: bool = True
+    DEFAULT_PRI_ONLY: bool = False
 
     # Basic guardrails
     MAX_SIZE: int = int(_search_cfg.get("max_page_size", 100))

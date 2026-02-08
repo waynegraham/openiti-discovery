@@ -173,6 +173,16 @@ def _version_label(status: str | None) -> str | None:
     return status.upper()
 
 
+def _metadata_is_pri(status: str | None, version_label: str | None, fallback: bool) -> bool:
+    status_norm = (status or "").strip().lower()
+    version_norm = (version_label or "").strip().upper()
+    if status_norm == "pri" or version_norm == "PRI":
+        return True
+    if status_norm == "sec" or version_norm == "ALT":
+        return False
+    return fallback
+
+
 def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, dict], dict[str, dict]]:
     csv_path = corpus_root / "OpenITI_metadata_2023-1-8.csv"
     if not csv_path.exists():
@@ -388,7 +398,11 @@ def _discover_from_metadata_index(
                 version_id=version_id,
                 repo_path=repo_rel,
                 abs_path=fp,
-                is_pri=("pri" in fp.name.lower()),
+                is_pri=_metadata_is_pri(
+                    status=(meta.get("status") or "") if meta else None,
+                    version_label=(meta.get("version_label") or "") if meta else None,
+                    fallback=("pri" in fp.name.lower()),
+                ),
                 lang="ara",
             )
         )
@@ -1092,6 +1106,20 @@ def run() -> None:
     for t in tqdm(texts, desc="Ingest versions", unit="version"):
         try:
             meta = metadata_by_path.get(t.repo_path) or metadata_by_version.get(t.abs_path.stem)
+            effective_is_pri = _metadata_is_pri(
+                status=(meta.get("status") or "") if meta else None,
+                version_label=(meta.get("version_label") or "") if meta else None,
+                fallback=bool(t.is_pri),
+            )
+            t_effective = DiscoveredText(
+                author_id=t.author_id,
+                work_id=t.work_id,
+                version_id=t.version_id,
+                repo_path=t.repo_path,
+                abs_path=t.abs_path,
+                is_pri=effective_is_pri,
+                lang=t.lang,
+            )
 
             author_name_lat = None
             work_title_ar = None
@@ -1142,8 +1170,8 @@ def run() -> None:
                 metadata=work_meta,
             )
             # Ensure the version exists before any ingest_state updates (FK constraint).
-            upsert_version(engine, t, checksum=None, word_count=None, char_count=None, metadata=version_meta)
-            existing_state = get_ingest_state(engine, t.version_id)
+            upsert_version(engine, t_effective, checksum=None, word_count=None, char_count=None, metadata=version_meta)
+            existing_state = get_ingest_state(engine, t_effective.version_id)
             decision = decide_ingest_behavior(
                 existing_state,
                 skip_existing=SKIP_EXISTING,
@@ -1152,7 +1180,7 @@ def run() -> None:
 
             if decision.action == "skip_complete":
                 run_stats["skipped_complete"] += 1
-                LOG.info("Skipping version_id=%s (%s)", t.version_id, decision.reason)
+                LOG.info("Skipping version_id=%s (%s)", t_effective.version_id, decision.reason)
                 continue
 
             if decision.action == "resume":
@@ -1167,7 +1195,7 @@ def run() -> None:
             else:
                 LOG.info(
                     "Resuming version_id=%s from chunk_index=%d (%s)",
-                    t.version_id,
+                    t_effective.version_id,
                     decision.start_chunk_index,
                     decision.reason,
                 )
@@ -1187,7 +1215,7 @@ def run() -> None:
 
             upsert_version(
                 engine,
-                t,
+                t_effective,
                 checksum=checksum,
                 word_count=word_count,
                 char_count=char_count,
@@ -1246,7 +1274,7 @@ def run() -> None:
                         "version_id": t.version_id,
                         "author_id": t.author_id,
                         "lang": t.lang,
-                        "is_pri": t.is_pri,
+                        "is_pri": t_effective.is_pri,
                         "title": None,
                         "content": planned_chunk.text_norm,
                         "author_name_ar": os_meta.get("author_ar"),
@@ -1268,7 +1296,7 @@ def run() -> None:
                     payload = build_vector_payload(
                         chunk_id=chunk_id,
                         chunk_index=planned_chunk.chunk_index,
-                        t=t,
+                        t=t_effective,
                         meta=os_meta,
                     )
                     chunks_for_vectors.append((chunk_id, planned_chunk.text_norm, payload))

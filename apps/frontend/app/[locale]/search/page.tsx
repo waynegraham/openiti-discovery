@@ -285,7 +285,6 @@ export default async function SearchPage({
               defaultValue={query}
               className="h-12 flex-1 rounded-full bg-background/80 px-5 text-base"
             />
-            <input type="hidden" name="mode" value={requestedMode} />
             {selectedPeriod.length ? (
               <input type="hidden" name="period" value={toCsvParam(selectedPeriod)} />
             ) : null}
