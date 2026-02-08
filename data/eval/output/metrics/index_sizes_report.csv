@@ -1,11 +1,10 @@
 section,name,value,unit,extra
 opensearch,target,openiti_chunks,,
-opensearch,index_size_bytes:openiti_chunks_v1,144527534,bytes,137.83 MB
-opensearch,index_size_bytes:openiti_chunks_v2,1990064285,bytes,1.85 GB
-opensearch,total_size_bytes,2134591819,bytes,1.99 GB
+opensearch,index_size_bytes:openiti_chunks_v1,3199695338,bytes,2.98 GB
+opensearch,total_size_bytes,3199695338,bytes,2.98 GB
 qdrant,collection,openiti_chunks,,
-qdrant,points_count,491095,count,
-qdrant,vectors_count,511243,count,
+qdrant,points_count,563588,count,
+qdrant,vectors_count,560853,count,
 qdrant,segments_count,6,count,
 qdrant,disk_data_size_bytes,0,bytes,0 B
 qdrant,ram_data_size_bytes,0,bytes,0 B

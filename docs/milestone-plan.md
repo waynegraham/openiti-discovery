@@ -40,7 +40,7 @@ Implementation notes:
 ## Milestone 3: True Resumable Ingest
 
 Scope: Implement restartable ingest from `ingest_state` with skip/resume logic.
-Status: Planned
+Status: Complete (February 8, 2026)
 
 Acceptance criteria:
 - Interrupted ingest can resume without reprocessing completed versions.
