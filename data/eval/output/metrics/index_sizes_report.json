@@ -1,0 +1,37 @@
+{
+  "opensearch": {
+    "target": "openiti_chunks",
+    "resolved_indices": [
+      {
+        "index": "openiti_chunks_v1",
+        "size_bytes": 144527534,
+        "size_human": "137.83 MB"
+      },
+      {
+        "index": "openiti_chunks_v2",
+        "size_bytes": 3645279823,
+        "size_human": "3.39 GB"
+      }
+    ],
+    "total_size_bytes": 3789807357,
+    "total_size_human": "3.53 GB"
+  },
+  "qdrant": {
+    "collection": "openiti_chunks",
+    "points_count": 491095,
+    "vectors_count": 0,
+    "segments_count": 6,
+    "disk_data_size_bytes": 0,
+    "disk_data_size_human": "0 B",
+    "ram_data_size_bytes": 0,
+    "ram_data_size_human": "0 B",
+    "disk_metrics_available": false,
+    "note": "Qdrant server did not return disk/ram size fields for this collection."
+  },
+  "corpus": {
+    "corpus_root": "/corpus/RELEASE",
+    "file_count": 55537,
+    "total_size_bytes": 22933672167,
+    "total_size_human": "21.36 GB"
+  }
+}

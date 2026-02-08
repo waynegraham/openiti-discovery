@@ -8,6 +8,12 @@ OS_TEMPLATE_NAME ?= openiti_chunks_template_v1
 OS_TEMPLATE_FILE ?= opensearch/templates/openiti_chunks_template.json
 OS_INDEX ?= openiti_chunks_v1
 OS_ALIAS ?= openiti_chunks
+OS_SIZE_TARGET ?= $(OS_ALIAS)
+QDRANT_SIZE_COLLECTION ?= openiti_chunks
+CORPUS_SIZE_ROOT ?= /corpus/RELEASE
+INDEX_SIZES_OUT_JSON ?= /app/data/eval/output/metrics/index_sizes_report.json
+INDEX_SIZES_OUT_CSV ?= /app/data/eval/output/metrics/index_sizes_report.csv
+INDEX_SIZES_LOCAL_DIR ?= data/eval/output/metrics
 
 # You can override these when calling make:
 # make ingest INGEST_WORK_LIMIT=200 EMBEDDING_DEVICE=cpu
@@ -32,7 +38,8 @@ endef
         init init-no-data ingest gpu-ingest \
         eval-scaffold eval-import-forms eval-corpus-plan eval-qrels-audit \
         eval-qualitative eval-scalability-measure eval-run-subsets \
-        eval-run eval-metrics eval-tables eval-record eval-all
+        eval-run eval-metrics eval-tables eval-record eval-all \
+        index-sizes
 
 # ---- Evaluation config ----
 EVAL_QUERIES ?= /app/data/eval/queries.json
@@ -69,6 +76,7 @@ help:
 	@echo "  make eval-tables    - Render markdown tables + compute Table Z"
 	@echo "  make eval-record    - Append experiment metadata + key metrics to experiment_runs.csv"
 	@echo "  make eval-all       - Run eval-run, eval-metrics, eval-tables in sequence"
+	@echo "  make index-sizes    - Report OpenSearch/Qdrant/corpus sizes and copy JSON+CSV to host"
 	@echo "  make migrate        - Run alembic upgrade head in api container"
 	@echo "  make template       - Apply OpenSearch index template"
 	@echo "  make index          - Create versioned OpenSearch index"
@@ -241,6 +249,18 @@ eval-scalability-measure:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.scalability_measure \
 	  --manifest $(EVAL_SCALABILITY_MANIFEST) \
 	  --out-csv /app/data/eval/output/metrics/table_z_scalability_measured.csv
+
+index-sizes:
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.index_sizes \
+	  --opensearch-target $(OS_SIZE_TARGET) \
+	  --qdrant-collection $(QDRANT_SIZE_COLLECTION) \
+	  --corpus-root $(CORPUS_SIZE_ROOT) \
+	  --out-json $(INDEX_SIZES_OUT_JSON) \
+	  --out-csv $(INDEX_SIZES_OUT_CSV)
+	@python -c "from pathlib import Path; Path(r'$(INDEX_SIZES_LOCAL_DIR)').mkdir(parents=True, exist_ok=True)"
+	$(COMPOSE) cp $(API_SERVICE):$(INDEX_SIZES_OUT_JSON) $(INDEX_SIZES_LOCAL_DIR)/
+	$(COMPOSE) cp $(API_SERVICE):$(INDEX_SIZES_OUT_CSV) $(INDEX_SIZES_LOCAL_DIR)/
+	@echo "Copied reports to $(INDEX_SIZES_LOCAL_DIR)"
 
 eval-run-subsets:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.subset_runner \
