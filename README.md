@@ -272,6 +272,12 @@ Active development. Core live search wiring is now in place; expect ongoing iter
 
 ---
 
+## Roadmap
+
+Milestones and acceptance criteria are tracked in `docs/milestone-plan.dm`.
+
+---
+
 ## Evaluation Workflow (Paper)
 
 The API container includes a full reproducible workflow for conference/paper experiments.
