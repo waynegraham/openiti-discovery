@@ -79,11 +79,12 @@ def _qdrant_report(collection: str) -> dict[str, Any]:
     disk_bytes = int(info.get("disk_data_size") or 0)
     ram_bytes = int(info.get("ram_data_size") or 0)
     has_disk_metrics = ("disk_data_size" in info) or ("ram_data_size" in info)
+    vectors_count = int(info.get("vectors_count") or info.get("indexed_vectors_count") or 0)
 
     return {
         "collection": collection,
         "points_count": int(info.get("points_count") or 0),
-        "vectors_count": int(info.get("vectors_count") or 0),
+        "vectors_count": vectors_count,
         "segments_count": int(info.get("segments_count") or 0),
         "disk_data_size_bytes": disk_bytes,
         "disk_data_size_human": _fmt_bytes(disk_bytes),
