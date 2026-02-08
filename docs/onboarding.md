@@ -135,7 +135,7 @@ A full ingest can take many hours and generate millions of records.
 
 ### Development Ingest (Recommended)
 
-Use subset mode:
+Use the ingest runner with explicit limits:
 
 ```
 docker compose --profile ingest run --rm ingest
@@ -144,18 +144,24 @@ docker compose --profile ingest run --rm ingest
 With environment variables set (via `.env` or shell):
 
 ```env
-INGEST_MODE=subset
 INGEST_ONLY_PRI=true
 INGEST_LANGS=ara
 INGEST_WORK_LIMIT=200
 EMBEDDING_DEVICE=cpu
 ```
 
+Current behavior note:
+
+* `INGEST_MODE` is currently ignored by the active ingest runner.
+* Language ingest is currently Arabic-only (requires `INGEST_LANGS` to include `ara`).
+
 This gives you:
 
 * realistic data
 * fast iteration
 * minimal pain
+
+See canonical constraints in `README.md` under `Current Behavior and Known Constraints (Canonical)`.
 
 ---
 

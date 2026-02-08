@@ -16,6 +16,21 @@ A local-first discovery stack for the OpenITI RELEASE corpus, combining full-tex
 
 ---
 
+## Current Behavior and Known Constraints (Canonical)
+
+This section is the source of truth for runtime constraints until Milestone 7 expands language behavior.
+
+* Ingest runner currently ignores `INGEST_MODE`; the variable is reserved for future runners.
+* Ingest language handling is currently Arabic-only: ingest proceeds only when `INGEST_LANGS` includes `ara`, and discovered texts are indexed as `lang=ara`.
+* `INGEST_WORK_LIMIT` defaults to `200` when unset.
+* `INGEST_ONLY_PRI` defaults to `true`.
+* Facet labels are loaded only from `active=true` rows in `config/facet_labels.csv`.
+* Use `make facet-labels-validate` for local editorial validation before commits. Current workflow defers CI wiring until workflow files are merged from the CI branch.
+
+Supporting docs (`docs/ingestion.md`, `docs/onboarding.md`, `docs/facet-labels.md`) are expected to match this section.
+
+---
+
 ## Architecture Overview
 
 | Component | Purpose | Version | Notes |
@@ -224,6 +239,12 @@ Search/embedding runtime behavior is configured in:
 * `config/text_normalization.yml` (canonical normalization shared by ingest and query embedding)
 * `config/facet_labels.csv` (domain-editable facet labels returned by the API)
 
+Validate facet-label edits locally:
+
+```bash
+make facet-labels-validate
+```
+
 ---
 
 ## API Endpoints (Current)
@@ -303,7 +324,7 @@ Active development. Core live search wiring is now in place; expect ongoing iter
 
 ## Roadmap
 
-Milestones and acceptance criteria are tracked in `docs/milestone-plan.dm`.
+Milestones and acceptance criteria are tracked in `docs/milestone-plan.md`.
 Milestone 1 (Platform Integrity) was completed on February 8, 2026.
 
 ---

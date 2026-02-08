@@ -153,12 +153,23 @@ Out of scope for Milestone 5:
 ## Milestone 6: Editorial/Config Workflow Completion
 
 Scope: Complete facet label workflow and sync docs with real behavior.
+Status: In progress (February 8, 2026)
 
 Acceptance criteria:
 - Facet-label validation script exists and runs in CI/local (`config/facet_labels.csv` checks).
 - Validation covers duplicate keys, unknown facets, and missing labels on active rows.
 - `README.md` and `docs/*.md` no longer conflict with implementation (`INGEST_MODE`, language support, current limits).
 - A single current-behavior section documents known constraints.
+
+Implementation notes:
+- Added local validation entrypoints: `make facet-labels-validate` and `make milestone-6`.
+- Validator behavior:
+  - fail on duplicate `(facet,key)` among `active=true` rows
+  - fail on missing `label_en` / `label_ar` for `active=true` rows
+  - warn (non-fatal) on unknown facet names to support draft editorial changes
+  - allow empty labels on inactive rows
+- Added canonical constraints section in `README.md` and aligned ingestion/onboarding docs to that source.
+- CI workflow integration for facet-label validation is deferred until GitHub workflow files are merged from the CI branch.
 
 ## Milestone 7: Multi-language and Metadata Robustness
 

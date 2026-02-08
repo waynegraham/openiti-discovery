@@ -4,10 +4,10 @@ This document describes the ingestion pipeline for **OpenITI Discovery**: how th
 
 The pipeline is designed for:
 
-* **full-corpus indexing** (entire OpenITI RELEASE)
-* **subset indexing** for development
-* **checkpointed**, **resumable execution**
+* development-friendly ingest with explicit limits (`INGEST_WORK_LIMIT`)
+* repeatable, checkpointed, resumable execution
 * CPU-only operation for development and GPU acceleration for embeddings when available
+* future extension to broader language ingest (Milestone 7)
 
 ---
 
@@ -48,19 +48,17 @@ flowchart TD
 
 --- 
 
-## Execution Modes
+## Current Runner Behavior
 
-The ingest container supports two common modes:
+The active ingest runner is controlled by `INGEST_WORK_LIMIT`, `INGEST_ONLY_PRI`, and `INGEST_LANGS`.
 
-**Full Mode**
+Current constraints:
 
-* Intended for complete corpus indexing
-* Runs until completion (hours to days depending on hardware and embedding model)
+* `INGEST_MODE` is reserved and currently ignored by the runner.
+* Language ingest is currently Arabic-only in this runner (`INGEST_LANGS` must include `ara`).
+* Default `INGEST_WORK_LIMIT` is `200` when unset.
 
-**Subset Mode**
-
-* Intended for development and iteration
-* Restricts ingest to a small set of works/versions/languages
+Canonical constraints are maintained in `README.md` under `Current Behavior and Known Constraints (Canonical)`.
 
 ---
 
@@ -77,10 +75,9 @@ docker compose --profile ingest run --rm ingest
 Set environment variables (via .env, compose overrides, or your shell):
 
 ```env
-INGEST_MODE=subset
 INGEST_ONLY_PRI=true
-INGEST_LANGS=ara,fas
-INGEST_WORK_LIMIT=500
+INGEST_LANGS=ara
+INGEST_WORK_LIMIT=200
 EMBEDDING_DEVICE=cpu
 CHUNK_TARGET_WORDS=300
 ```
@@ -111,10 +108,9 @@ docker compose --profile ingest run --rm ingest
 
 | Variable                  |       Default | Description                                          |
 | ------------------------- | ------------: | ---------------------------------------------------- |
-| `INGEST_MODE`             |        `full` | `full` or `subset`                                   |
 | `INGEST_ONLY_PRI`         |        `true` | Index only primary versions by default               |
-| `INGEST_LANGS`            | `ara,fas,ota` | Comma-separated language codes                       |
-| `INGEST_WORK_LIMIT`       |           `0` | Limit number of works (subset mode). `0` = no limit  |
+| `INGEST_LANGS`            |         `ara` | Comma-separated language codes (current runner indexes Arabic only) |
+| `INGEST_WORK_LIMIT`       |         `200` | Limit number of works                                |
 | `CHUNK_TARGET_WORDS`      |         `300` | Target passage size in words                         |
 | `CHUNK_MAX_OVERLAP_WORDS` |           `0` | Optional overlap for recall (usually 0 initially)    |
 | `SKIP_EXISTING`           |        `true` | Skip already indexed passages based on checkpointing |
@@ -169,7 +165,7 @@ The pipeline walks the RELEASE directory tree and identifies candidate text file
 
 * Ignore non-text artifacts
 * Optionally restrict to `PRI` versions
-* Restrict by language selection (`INGEST_LANGS`)
+* Restrict by language selection (`INGEST_LANGS`; current runner requires `ara`)
 
 Outputs a stream of “version ingest tasks”.
 

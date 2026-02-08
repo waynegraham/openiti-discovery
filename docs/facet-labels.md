@@ -29,12 +29,15 @@ Required columns:
 ## Recommended Workflow
 
 1. Domain expert edits `config/facet_labels.csv`.
-2. Run validation script (to be added during implementation):
-   - duplicate `(facet,key)` rows
-   - missing `label_en`/`label_ar` for active rows
-   - unknown facet names
-3. Build step converts CSV into runtime map used by API.
-4. API returns label-ready facets (`key`, `label`, `count`).
+2. Run validation locally:
+   - `make facet-labels-validate`
+   - or `python apps/api/scripts/validate_facet_labels.py --path config/facet_labels.csv`
+3. Validation behavior:
+   - fail on duplicate `(facet,key)` rows among `active=true` rows
+   - fail on missing `label_en`/`label_ar` for `active=true` rows
+   - warn (non-fatal) on unknown facet names for draft editorial rows
+4. Build step converts CSV into runtime map used by API.
+5. API returns label-ready facets (`key`, `label`, `count`).
 
 ## Ownership
 
