@@ -127,4 +127,44 @@ describe("reading routes integration", () => {
     expect(screen.getByRole("link", { name: "افتح" })).toHaveAttribute("href", "/ar/passage/v1%3A%3A0");
     expect(screen.getByText("غير متاح عند هذا الموضع")).toBeInTheDocument();
   });
+
+  it("decodes encoded dynamic route params before API calls", async () => {
+    mockFetchWithRoutes({
+      "/chunks/v1%3A%3A0": {
+        chunk_id: "v1::0",
+        version_id: "v1",
+        work_id: "w/1",
+        author_id: "a1",
+        chunk_index: 0,
+        text_raw: "Passage body",
+      },
+      "/works/w%2F1/versions?": [
+        { version_id: "v1", work_id: "w/1", lang: "ara", is_pri: true, repo_path: "x" },
+      ],
+      "/works/w%2F1/versions/v1/chunks/resolve?target_chunk_index=0": {
+        resolved_chunk_id: "v1::0",
+        resolved_chunk_index: 0,
+      },
+      "/works/w%2F1": {
+        work_id: "w/1",
+        author_id: "a1",
+        title_latn: "Work Slash",
+        author_name_latn: "Author One",
+      },
+    });
+
+    const passageUi = await PassagePage({
+      params: Promise.resolve({ locale: "en", chunkId: "v1%3A%3A0" }),
+      searchParams: Promise.resolve({}),
+    });
+    render(passageUi);
+    expect(screen.getByRole("heading", { name: "v1::0" })).toBeInTheDocument();
+
+    const workUi = await WorkPage({
+      params: Promise.resolve({ locale: "en", workId: "w%2F1" }),
+      searchParams: Promise.resolve({ target_chunk_index: "0" }),
+    });
+    render(workUi);
+    expect(screen.getByRole("heading", { name: "Work Slash" })).toBeInTheDocument();
+  });
 });

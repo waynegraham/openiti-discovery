@@ -39,6 +39,14 @@ function parseCsv(value?: string) {
   return value.split(",").map((v) => v.trim()).filter(Boolean);
 }
 
+function normalizeRouteParam(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function labels(locale: string) {
   if (locale === "ar") {
     return {
@@ -72,12 +80,13 @@ export default async function PassagePage({
   searchParams?: Promise<{ langs?: string; q?: string }>;
 }) {
   const { locale, chunkId } = await params;
+  const normalizedChunkId = normalizeRouteParam(chunkId);
   setRequestLocale(locale);
   const copy = labels(locale);
   const resolvedSearchParams = await (searchParams ?? Promise.resolve({}));
   const langs = parseCsv(resolvedSearchParams.langs);
 
-  const chunk = await fetchJson<ChunkResponse>(`/chunks/${encodeURIComponent(chunkId)}`);
+  const chunk = await fetchJson<ChunkResponse>(`/chunks/${encodeURIComponent(normalizedChunkId)}`);
   if (!chunk) notFound();
 
   const versionPath = new URLSearchParams({ locale });

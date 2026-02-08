@@ -34,8 +34,8 @@ def list_work_versions(
     preferred_langs: list[str] | None = None,
 ) -> list[dict]:
     preferred_langs = preferred_langs or []
-    lang_rank_expr = "999"
     params: dict[str, object] = {"work_id": work_id}
+    order_by_parts = ["v.is_pri DESC"]
 
     if preferred_langs:
         rank_parts: list[str] = []
@@ -43,7 +43,10 @@ def list_work_versions(
             key = f"pref_lang_{idx}"
             params[key] = lang
             rank_parts.append(f"WHEN :{key} THEN {idx}")
-        lang_rank_expr = f"CASE v.lang {' '.join(rank_parts)} ELSE 999 END"
+        order_by_parts.append(f"CASE v.lang {' '.join(rank_parts)} ELSE 999 END")
+
+    order_by_parts.append("v.version_id")
+    order_by_clause = ",\n          ".join(order_by_parts)
 
     sql = text(
         f"""
@@ -57,9 +60,7 @@ def list_work_versions(
         FROM versions v
         WHERE v.work_id = :work_id
         ORDER BY
-          v.is_pri DESC,
-          {lang_rank_expr},
-          v.version_id
+          {order_by_clause}
         """
     )
     with engine.connect() as conn:

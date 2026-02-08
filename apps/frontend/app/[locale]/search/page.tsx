@@ -66,6 +66,14 @@ function parseCsvParam(value?: string) {
     .filter(Boolean);
 }
 
+function normalizeId(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function toCsvParam(values: string[]) {
   return values.join(",");
 }
@@ -562,11 +570,12 @@ export default async function SearchPage({
               <div className="space-y-4">
                 {results.map((result) => {
                   const src = (result.source || {}) as Record<string, unknown>;
+                  const normalizedChunkId = normalizeId(result.chunk_id);
                   const title =
                     (src.work_title_lat as string) ||
                     (src.work_title_ar as string) ||
                     (src.title as string) ||
-                    result.chunk_id;
+                    normalizedChunkId;
                   const author =
                     (src.author_name_lat as string) ||
                     (src.author_name_ar as string) ||
@@ -586,7 +595,7 @@ export default async function SearchPage({
                   const tags = Array.isArray(src.tags) ? (src.tags as string[]) : [];
                   const version = (src.version_label as string) || "";
                   const type = (src.type as string) || "Passage";
-                  const workId = (src.work_id as string) || "";
+                  const workId = normalizeId((src.work_id as string) || "");
                   const snippet = highlightSnippet(result);
 
                   return (
@@ -630,7 +639,7 @@ export default async function SearchPage({
                         </div>
                         <div className="flex flex-wrap gap-3 text-sm">
                           <a
-                            href={`/${locale}/passage/${encodeURIComponent(result.chunk_id)}`}
+                            href={`/${locale}/passage/${encodeURIComponent(normalizedChunkId)}`}
                             className={cn(buttonVariants(), "rounded-full")}
                           >
                             {t("openPassage")}

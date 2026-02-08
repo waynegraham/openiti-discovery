@@ -125,4 +125,61 @@ describe("search page integration", () => {
       "/ar/work/w1",
     );
   });
+
+  it("normalizes already-encoded ids in result links", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        ({
+          ok: true,
+          json: async () => ({
+            query: "abc",
+            requested_mode: "bm25",
+            effective_mode: "bm25",
+            warnings: [],
+            total: 1,
+            page: 1,
+            size: 20,
+            facets: {
+              period: [],
+              region: [],
+              tags: [],
+              lang: [],
+              version: [],
+            },
+            results: [
+              {
+                chunk_id: "v1%3A%3A0",
+                score: 1.0,
+                source: {
+                  work_id: "w%2F1",
+                  work_title_lat: "Work 1",
+                  author_name_lat: "Author 1",
+                  content: "Snippet",
+                },
+              },
+            ],
+            embedding_model: "m",
+            embedding_model_version: "v",
+            normalization_version: "n",
+          }),
+        }) as Response
+      ),
+    );
+
+    const ui = await SearchPage({
+      params: Promise.resolve({ locale: "en" }),
+      searchParams: Promise.resolve({ q: "abc" }),
+    });
+    render(ui);
+
+    expect(screen.getByRole("link", { name: "Open passage" })).toHaveAttribute(
+      "href",
+      "/en/passage/v1%3A%3A0",
+    );
+    expect(screen.getByRole("link", { name: "View work" })).toHaveAttribute(
+      "href",
+      "/en/work/w%2F1",
+    );
+  });
 });

@@ -39,6 +39,14 @@ function parseCsv(value?: string) {
   return value.split(",").map((v) => v.trim()).filter(Boolean);
 }
 
+function normalizeRouteParam(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function labels(locale: string) {
   if (locale === "ar") {
     return {
@@ -68,6 +76,7 @@ export default async function WorkPage({
   searchParams?: Promise<{ target_chunk_index?: string; langs?: string }>;
 }) {
   const { locale, workId } = await params;
+  const normalizedWorkId = normalizeRouteParam(workId);
   setRequestLocale(locale);
   const copy = labels(locale);
   const resolvedSearchParams = await (searchParams ?? Promise.resolve({}));
@@ -77,20 +86,20 @@ export default async function WorkPage({
     : 0;
   const langs = parseCsv(resolvedSearchParams.langs);
 
-  const work = await fetchJson<WorkResponse>(`/works/${encodeURIComponent(workId)}`);
+  const work = await fetchJson<WorkResponse>(`/works/${encodeURIComponent(normalizedWorkId)}`);
   if (!work) notFound();
 
   const versionPath = new URLSearchParams({ locale });
   if (langs.length) versionPath.set("preferred_langs", langs.join(","));
   const versions =
     (await fetchJson<WorkVersion[]>(
-      `/works/${encodeURIComponent(workId)}/versions?${versionPath.toString()}`
+      `/works/${encodeURIComponent(normalizedWorkId)}/versions?${versionPath.toString()}`
     )) || [];
 
   const resolvedByVersion = await Promise.all(
     versions.map(async (v) => {
       const resolved = await fetchJson<ResolveResponse>(
-        `/works/${encodeURIComponent(workId)}/versions/${encodeURIComponent(v.version_id)}/chunks/resolve?target_chunk_index=${safeTargetChunkIndex}`
+        `/works/${encodeURIComponent(normalizedWorkId)}/versions/${encodeURIComponent(v.version_id)}/chunks/resolve?target_chunk_index=${safeTargetChunkIndex}`
       );
       return {
         version: v,
