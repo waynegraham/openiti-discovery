@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
-
-from sentence_transformers import SentenceTransformer
+from typing import TYPE_CHECKING
 
 from .runtime_config import normalization_version, search_runtime
 from .text_normalization import normalize_arabic_script
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 
 def _embedding_cfg() -> dict:
@@ -35,6 +37,8 @@ def _device() -> str:
 
 @lru_cache(maxsize=1)
 def get_embedding_model() -> SentenceTransformer:
+    from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer(embedding_model_name(), device=_device())
 
 
@@ -63,4 +67,3 @@ def embedding_trace() -> dict[str, str]:
         "embedding_model_version": embedding_model_version(),
         "normalization_version": normalization_version(),
     }
-
