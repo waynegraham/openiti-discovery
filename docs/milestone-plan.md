@@ -22,12 +22,20 @@ Implementation notes:
 ## Milestone 2: Retrieval Filter Correctness (Vector/Hybrid)
 
 Scope: Align Qdrant payload fields with vector filter/query contract.
+Status: Complete (February 8, 2026)
 
 Acceptance criteria:
 - Ingest writes `period`, `region`, `tags`, and `version_label` into Qdrant payload.
 - `vector` and `hybrid` searches honor those filters.
 - For a controlled subset corpus, filtered hit IDs are consistent with expected constraints.
 - API tests cover at least one filter for each of `period`, `region`, `tags`, and `version`.
+
+Implementation notes:
+- Added vector payload builder in ingest to always write `period`, `region`, `tags`, and `version_label` to Qdrant points.
+- Centralized Qdrant filter construction for both `vector_search` and `vector_count` to keep behavior consistent.
+- Normalized `version` query values (`pri` -> `PRI`, `sec/alt` -> `ALT`) before vector/hybrid dispatch.
+- Added API tests verifying filter propagation and version normalization across `vector` and `hybrid` modes.
+- Added ingest payload contract test to assert required filter fields are present in Qdrant payloads.
 
 ## Milestone 3: True Resumable Ingest
 

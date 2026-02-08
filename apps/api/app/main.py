@@ -36,6 +36,24 @@ def _split_csv(value: str | None) -> list[str] | None:
     return vals or None
 
 
+def _normalize_version_values(values: list[str] | None) -> list[str] | None:
+    if not values:
+        return None
+    out: list[str] = []
+    for raw in values:
+        v = (raw or "").strip()
+        if not v:
+            continue
+        low = v.lower()
+        if low == "pri":
+            out.append("PRI")
+        elif low in ("alt", "sec"):
+            out.append("ALT")
+        else:
+            out.append(v.upper())
+    return out or None
+
+
 def _search_cfg() -> dict:
     cfg = search_runtime().get("search") or {}
     return cfg if isinstance(cfg, dict) else {}
@@ -182,7 +200,7 @@ def search(
     period_list = _split_csv(period)
     region_list = _split_csv(region)
     tags_list = _split_csv(tags)
-    version_list = _split_csv(version)
+    version_list = _normalize_version_values(_split_csv(version))
     from_ = (page - 1) * size
 
     if mode == "bm25":

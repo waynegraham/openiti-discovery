@@ -760,6 +760,29 @@ def qdrant_point_id(chunk_id: str) -> int:
     return int.from_bytes(digest[:8], "big", signed=False)
 
 
+def build_vector_payload(
+    *,
+    chunk_id: str,
+    chunk_index: int,
+    t: DiscoveredText,
+    meta: dict | None = None,
+) -> dict:
+    md = meta or {}
+    return {
+        "chunk_id": chunk_id,
+        "work_id": t.work_id,
+        "version_id": t.version_id,
+        "author_id": t.author_id,
+        "lang": t.lang,
+        "is_pri": bool(t.is_pri),
+        "chunk_index": chunk_index,
+        "period": md.get("period"),
+        "region": md.get("region") or [],
+        "tags": md.get("tags") or [],
+        "version_label": md.get("version_label"),
+    }
+
+
 # ---------------------------
 # Runner
 # ---------------------------
@@ -982,15 +1005,12 @@ def run() -> None:
                 )
 
                 if EMBEDDINGS_ENABLED and model is not None:
-                    payload = {
-                        "chunk_id": chunk_id,
-                        "work_id": t.work_id,
-                        "version_id": t.version_id,
-                        "author_id": t.author_id,
-                        "lang": t.lang,
-                        "is_pri": bool(t.is_pri),
-                        "chunk_index": chunk_index,
-                    }
+                    payload = build_vector_payload(
+                        chunk_id=chunk_id,
+                        chunk_index=chunk_index,
+                        t=t,
+                        meta=os_meta,
+                    )
                     chunks_for_vectors.append((chunk_id, text_norm, payload))
 
                 # batch flush

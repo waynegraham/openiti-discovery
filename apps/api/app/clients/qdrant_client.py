@@ -27,6 +27,50 @@ def ping_qdrant() -> bool:
         return False
 
 
+def _normalize_version_values(version: list[str] | None) -> list[str] | None:
+    if not version:
+        return None
+    out: list[str] = []
+    for value in version:
+        v = (value or "").strip()
+        if not v:
+            continue
+        low = v.lower()
+        if low == "pri":
+            out.append("PRI")
+        elif low in ("alt", "sec"):
+            out.append("ALT")
+        else:
+            out.append(v.upper())
+    return out or None
+
+
+def _build_query_filter(
+    *,
+    langs: list[str] | None,
+    pri_only: bool,
+    period: list[str] | None = None,
+    region: list[str] | None = None,
+    tags: list[str] | None = None,
+    version: list[str] | None = None,
+) -> dict | None:
+    must: list[dict] = []
+    if pri_only:
+        must.append({"key": "is_pri", "match": {"value": True}})
+    if langs:
+        must.append({"key": "lang", "match": {"any": langs}})
+    if period:
+        must.append({"key": "period", "match": {"any": period}})
+    if region:
+        must.append({"key": "region", "match": {"any": region}})
+    if tags:
+        must.append({"key": "tags", "match": {"any": tags}})
+    normalized_version = _normalize_version_values(version)
+    if normalized_version:
+        must.append({"key": "version_label", "match": {"any": normalized_version}})
+    return {"must": must} if must else None
+
+
 def vector_search(
     *,
     query_vector: list[float],
@@ -45,21 +89,14 @@ def vector_search(
     """
     q = get_qdrant()
 
-    must = []
-    if pri_only:
-        must.append({"key": "is_pri", "match": {"value": True}})
-    if langs:
-        must.append({"key": "lang", "match": {"any": langs}})
-    if period:
-        must.append({"key": "period", "match": {"any": period}})
-    if region:
-        must.append({"key": "region", "match": {"any": region}})
-    if tags:
-        must.append({"key": "tags", "match": {"any": tags}})
-    if version:
-        must.append({"key": "version_label", "match": {"any": version}})
-
-    flt = {"must": must} if must else None
+    flt = _build_query_filter(
+        langs=langs,
+        pri_only=pri_only,
+        period=period,
+        region=region,
+        tags=tags,
+        version=version,
+    )
 
     res = q.search(
         collection_name=settings.QDRANT_COLLECTION,
@@ -95,20 +132,14 @@ def vector_count(
 ) -> int:
     q = get_qdrant()
 
-    must = []
-    if pri_only:
-        must.append({"key": "is_pri", "match": {"value": True}})
-    if langs:
-        must.append({"key": "lang", "match": {"any": langs}})
-    if period:
-        must.append({"key": "period", "match": {"any": period}})
-    if region:
-        must.append({"key": "region", "match": {"any": region}})
-    if tags:
-        must.append({"key": "tags", "match": {"any": tags}})
-    if version:
-        must.append({"key": "version_label", "match": {"any": version}})
+    flt = _build_query_filter(
+        langs=langs,
+        pri_only=pri_only,
+        period=period,
+        region=region,
+        tags=tags,
+        version=version,
+    )
 
-    flt = {"must": must} if must else None
     res = q.count(collection_name=settings.QDRANT_COLLECTION, count_filter=flt, exact=False)
     return int(getattr(res, "count", 0) or 0)

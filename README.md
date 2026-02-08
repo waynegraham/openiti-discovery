@@ -242,6 +242,22 @@ Facet behavior:
 
 ---
 
+## Running Tests
+
+Run backend tests from the repository root:
+
+```bash
+python -m pytest apps/api/tests -q
+```
+
+To run just the API search tests used for milestone validation:
+
+```bash
+python -m pytest apps/api/tests/test_main_api.py -q
+```
+
+---
+
 ## Local URLs
 
 * Frontend: http://localhost:3000

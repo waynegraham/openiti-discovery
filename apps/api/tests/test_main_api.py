@@ -193,3 +193,134 @@ def test_search_hybrid_falls_back_to_bm25_when_vector_unavailable(client, monkey
     assert body["effective_mode"] == "bm25"
     assert body["warnings"] == ["qdrant_unavailable_fallback_bm25"]
     assert body["results"][0]["chunk_id"] == "chunk-9"
+
+
+def test_search_vector_forwards_filters_and_normalizes_version(client, monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "embedding_trace",
+        lambda: {
+            "embedding_model": "m",
+            "embedding_model_version": "v",
+            "normalization_version": "n",
+        },
+    )
+    monkeypatch.setattr(main, "encode_texts", lambda texts, input_type: [[0.2, 0.3]])
+
+    captured: dict[str, dict] = {}
+
+    def fake_vector_search(**kwargs):
+        captured["vector_search"] = kwargs
+        return [{"chunk_id": "c1", "score": 0.9, "payload": {"chunk_id": "c1"}}]
+
+    def fake_vector_count(**kwargs):
+        captured["vector_count"] = kwargs
+        return 1
+
+    def fake_filter_chunk_ids(chunk_ids, **kwargs):
+        captured["filter_chunk_ids"] = {"chunk_ids": list(chunk_ids), **kwargs}
+        return set(chunk_ids)
+
+    monkeypatch.setattr(main, "vector_search", fake_vector_search)
+    monkeypatch.setattr(main, "vector_count", fake_vector_count)
+    monkeypatch.setattr(main, "filter_chunk_ids", fake_filter_chunk_ids)
+    monkeypatch.setattr(
+        main,
+        "fetch_sources_by_chunk_ids",
+        lambda chunk_ids: {"c1": {"chunk_id": "c1", "content": "hydrated"}},
+    )
+
+    res = client.get(
+        "/search",
+        params={
+            "q": "abc",
+            "mode": "vector",
+            "period": "Abb",
+            "region": "Basra",
+            "tags": "GAL@adab",
+            "version": "pri",
+        },
+    )
+    body = res.json()
+
+    assert res.status_code == 200
+    assert body["results"][0]["chunk_id"] == "c1"
+    assert captured["vector_search"]["period"] == ["Abb"]
+    assert captured["vector_search"]["region"] == ["Basra"]
+    assert captured["vector_search"]["tags"] == ["GAL@adab"]
+    assert captured["vector_search"]["version"] == ["PRI"]
+    assert captured["vector_count"]["version"] == ["PRI"]
+    assert captured["filter_chunk_ids"]["version"] == ["PRI"]
+
+
+def test_search_hybrid_forwards_filters_to_bm25_and_vector(client, monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "embedding_trace",
+        lambda: {
+            "embedding_model": "m",
+            "embedding_model_version": "v",
+            "normalization_version": "n",
+        },
+    )
+    monkeypatch.setattr(main, "encode_texts", lambda texts, input_type: [[0.2, 0.3]])
+    monkeypatch.setattr(main, "_candidate_k", lambda page, size: 5)
+    monkeypatch.setattr(main, "_rrf_k", lambda: 60)
+
+    captured: dict[str, dict] = {}
+
+    def fake_bm25_search(**kwargs):
+        captured["bm25_search"] = kwargs
+        return {
+            "hits": {
+                "total": {"value": 1},
+                "hits": [
+                    {
+                        "_id": "c1",
+                        "_score": 1.0,
+                        "_source": {"chunk_id": "c1", "content": "bm25"},
+                        "highlight": {"content": ["<em>x</em>"]},
+                    }
+                ],
+            }
+        }
+
+    def fake_vector_search(**kwargs):
+        captured["vector_search"] = kwargs
+        return [{"chunk_id": "c1", "score": 0.9, "payload": {"chunk_id": "c1"}}]
+
+    def fake_vector_count(**kwargs):
+        captured["vector_count"] = kwargs
+        return 1
+
+    monkeypatch.setattr(main, "bm25_search", fake_bm25_search)
+    monkeypatch.setattr(main, "vector_search", fake_vector_search)
+    monkeypatch.setattr(main, "vector_count", fake_vector_count)
+    monkeypatch.setattr(
+        main,
+        "fetch_sources_by_chunk_ids",
+        lambda chunk_ids: {"c1": {"chunk_id": "c1", "content": "hydrated"}},
+    )
+
+    res = client.get(
+        "/search",
+        params={
+            "q": "abc",
+            "mode": "hybrid",
+            "period": "Abb",
+            "region": "Basra",
+            "tags": "GAL@adab",
+            "version": "sec",
+        },
+    )
+    body = res.json()
+
+    assert res.status_code == 200
+    assert body["effective_mode"] == "hybrid"
+    assert body["results"][0]["chunk_id"] == "c1"
+    assert captured["bm25_search"]["period"] == ["Abb"]
+    assert captured["bm25_search"]["region"] == ["Basra"]
+    assert captured["bm25_search"]["tags"] == ["GAL@adab"]
+    assert captured["bm25_search"]["version"] == ["ALT"]
+    assert captured["vector_search"]["version"] == ["ALT"]
+    assert captured["vector_count"]["version"] == ["ALT"]
