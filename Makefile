@@ -34,7 +34,7 @@ define wait_http
 endef
 
 .PHONY: help up down reset logs ps \
-        wait migrate template index alias status \
+        wait migrate template-validate template index alias smoke-alias status milestone-1 \
         init init-no-data ingest gpu-ingest \
         eval-scaffold eval-import-forms eval-corpus-plan eval-qrels-audit \
         eval-qualitative eval-scalability-measure eval-run-subsets \
@@ -78,8 +78,11 @@ help:
 	@echo "  make eval-all       - Run eval-run, eval-metrics, eval-tables in sequence"
 	@echo "  make index-sizes    - Report OpenSearch/Qdrant/corpus sizes and copy JSON+CSV to host"
 	@echo "  make migrate        - Run alembic upgrade head in api container"
+	@echo "  make template-validate - Validate OpenSearch template JSON syntax"
 	@echo "  make template       - Apply OpenSearch index template"
 	@echo "  make index          - Create versioned OpenSearch index"
+	@echo "  make smoke-alias    - Write and query a smoke doc through alias"
+	@echo "  make milestone-1    - Run Milestone 1 bootstrap validation sequence"
 	@echo "  make status         - Show health of postgres/opensearch/qdrant and alias status"
 	@echo "  make reset          - docker compose down -v (DANGEROUS: deletes volumes)"
 	@echo "  make up             - Bring up core services (postgres/opensearch/qdrant/api/frontend)"
@@ -111,6 +114,12 @@ migrate:
 	@echo "Running Alembic migrations..."
 	$(COMPOSE) exec -T $(API_SERVICE) alembic upgrade head
 
+template-validate:
+	@echo "Validating OpenSearch template JSON: $(OS_TEMPLATE_FILE)"
+	@test -f "$(OS_TEMPLATE_FILE)" || (echo "Missing $(OS_TEMPLATE_FILE)"; exit 1)
+	@python -m json.tool "$(OS_TEMPLATE_FILE)" >/dev/null
+	@echo "Template JSON is valid."
+
 template:
 	@echo "Applying OpenSearch index template: $(OS_TEMPLATE_NAME)"
 	@test -f "$(OS_TEMPLATE_FILE)" || (echo "Missing $(OS_TEMPLATE_FILE)"; exit 1)
@@ -127,11 +136,22 @@ index:
 
 alias:
 	@echo "Ensuring alias write target: $(OS_ALIAS) -> $(OS_INDEX)"
-	# Mark this index as the write target for the alias.
+	# Clear alias from previous versioned indices, then mark this one as the sole write index.
 	curl -fsS -X POST "$(OS_URL)/_aliases" \
 	  -H "Content-Type: application/json" \
-	  -d '{"actions":[{"add":{"index":"'"$(OS_INDEX)"'","alias":"'"$(OS_ALIAS)"'","is_write_index":true}}]}' >/dev/null
+	  -d '{"actions":[{"remove":{"index":"openiti_chunks_v*","alias":"'"$(OS_ALIAS)"'","must_exist":false}},{"add":{"index":"'"$(OS_INDEX)"'","alias":"'"$(OS_ALIAS)"'","is_write_index":true}}]}' >/dev/null
 	@echo "Alias ensured."
+
+smoke-alias:
+	@echo "Writing smoke doc via alias: $(OS_ALIAS)"
+	@SMOKE_ID="smoke-$$(date +%s)"; \
+	curl -fsS -X POST "$(OS_URL)/$(OS_ALIAS)/_doc/$$SMOKE_ID?refresh=wait_for" \
+	  -H "Content-Type: application/json" \
+	  -d '{"chunk_id":"'"$$SMOKE_ID"'","work_id":"smoke_work","version_id":"smoke_version","author_id":"smoke_author","lang":"ara","is_pri":true,"author_name_ar":"smoke","author_name_lat":"smoke","work_title_ar":"smoke","work_title_lat":"smoke","date_ah":1,"date_ce":1,"period":"test","period_tag":"test","region":"test","tags":["smoke"],"version_label":"smoke","type":"passage","title":"smoke","content":"smoke"}' >/dev/null; \
+	HTTP_CODE="$$(curl -s -o /dev/null -w "%{http_code}" -X GET "$(OS_URL)/$(OS_ALIAS)/_search" -H "Content-Type: application/json" -d '{"size":1,"query":{"term":{"chunk_id":"'"$$SMOKE_ID"'"}}}')"; \
+	if [ "$$HTTP_CODE" != "200" ]; then echo "Alias smoke query failed with HTTP $$HTTP_CODE"; exit 1; fi; \
+	curl -fsS -X DELETE "$(OS_URL)/$(OS_ALIAS)/_doc/$$SMOKE_ID?refresh=wait_for" >/dev/null || true
+	@echo "Alias smoke write/query passed (HTTP 200)."
 
 status:
 	@echo "OpenSearch:"
@@ -145,10 +165,13 @@ status:
 
 # ---- High-level workflows ----
 
-init-no-data: up wait migrate template index alias status
+milestone-1: up wait template-validate template index alias smoke-alias status
+	@echo "Milestone 1 checks complete."
+
+init-no-data: up wait migrate template-validate template index alias smoke-alias status
 	@echo "Init complete (no ingest)."
 
-init: up wait migrate template index alias
+init: up wait migrate template-validate template index alias
 	@echo "Running subset ingest..."
 	$(MAKE) ingest
 	@$(MAKE) status
