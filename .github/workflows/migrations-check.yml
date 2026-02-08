@@ -1,0 +1,73 @@
+name: Migrations Check
+
+on:
+  pull_request:
+    paths:
+      - "apps/api/alembic/**"
+      - "apps/api/app/**"
+      - "apps/api/alembic.ini"
+      - "apps/api/requirements.base.txt"
+      - ".github/workflows/migrations-check.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/api/alembic/**"
+      - "apps/api/app/**"
+      - "apps/api/alembic.ini"
+      - "apps/api/requirements.base.txt"
+      - ".github/workflows/migrations-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  alembic-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: openiti
+          POSTGRES_USER: openiti
+          POSTGRES_PASSWORD: openiti
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U openiti -d openiti"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://openiti:openiti@localhost:5432/openiti
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: apps/api/requirements.base.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/api/requirements.base.txt
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            if python -c "import psycopg; psycopg.connect('dbname=openiti user=openiti password=openiti host=localhost port=5432').close()"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres did not become ready"
+          exit 1
+
+      - name: Alembic upgrade head
+        working-directory: apps/api
+        run: alembic upgrade head

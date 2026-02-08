@@ -258,6 +258,34 @@ python -m pytest apps/api/tests/test_main_api.py -q
 
 ---
 
+## Branch Protection Recommendations
+
+Recommended target branch: `main`
+
+### Required Status Checks Matrix
+
+| Workflow file | Check name in GitHub UI | Require on `main` | Notes |
+| --- | --- | --- | --- |
+| `.github/workflows/backend-tests.yml` | `Backend Tests / test` | Yes | Fast API unit/integration checks for core backend behavior. |
+| `.github/workflows/frontend-quality.yml` | `Frontend Quality / quality` | Yes | Blocks frontend lint/type/build regressions. |
+| `.github/workflows/platform-smoke.yml` | `Platform Smoke / smoke` | Yes | Verifies Docker-compose platform contracts (OpenSearch template/index/alias smoke). |
+| `.github/workflows/migrations-check.yml` | `Migrations Check / alembic-upgrade` | Yes | Ensures `alembic upgrade head` succeeds against Postgres 18. |
+| `.github/workflows/repo-hygiene.yml` | `Repo Hygiene / hygiene` | Optional | Useful guardrails; keep non-blocking while rules evolve. |
+| `.github/workflows/eval-smoke.yml` | `Eval Smoke / eval-smoke` | Optional | Scheduled/manual by design; keep off required PR checks. |
+
+### Recommended Branch Rule Settings
+
+* Require a pull request before merging.
+* Require approvals: minimum `1` (or `2` for release hardening).
+* Require conversation resolution before merging.
+* Require status checks to pass before merging.
+* Require branches to be up to date before merging.
+* Restrict direct pushes to `main`.
+* Include administrators (recommended once checks are stable).
+* Dismiss stale approvals on new commits (recommended).
+
+---
+
 ## Local URLs
 
 * Frontend: http://localhost:3000

@@ -1,0 +1,66 @@
+name: Platform Smoke
+
+on:
+  pull_request:
+    paths:
+      - "Makefile"
+      - "docker-compose.yml"
+      - "opensearch/**"
+      - "apps/api/**"
+      - "config/**"
+      - ".env.example"
+      - ".github/workflows/platform-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Makefile"
+      - "docker-compose.yml"
+      - "opensearch/**"
+      - "apps/api/**"
+      - "config/**"
+      - ".env.example"
+      - ".github/workflows/platform-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: N0t-A-T0y-P@ssword!
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment file
+        run: cp .env.example .env
+
+      - name: Build API and OpenSearch images
+        run: docker compose build api opensearch
+
+      - name: Start core services
+        run: docker compose up -d postgres opensearch qdrant api
+
+      - name: Run platform smoke checks
+        run: |
+          make wait
+          make template-validate
+          make template
+          make index
+          make alias
+          make smoke-alias
+
+      - name: Show service status
+        if: always()
+        run: docker compose ps
+
+      - name: Dump API logs on failure
+        if: failure()
+        run: docker compose logs --tail=200 api
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

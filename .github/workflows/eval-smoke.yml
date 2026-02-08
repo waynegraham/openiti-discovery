@@ -1,0 +1,60 @@
+name: Eval Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 7 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  eval-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: N0t-A-T0y-P@ssword!
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment file
+        run: cp .env.example .env
+
+      - name: Build API and OpenSearch images
+        run: docker compose build api opensearch
+
+      - name: Start eval services
+        run: docker compose up -d postgres opensearch qdrant api
+
+      - name: Bootstrap index and eval placeholder data
+        run: |
+          make wait
+          make template-validate
+          make template
+          make index
+          make alias
+          docker compose exec -T api python -m app.eval.scaffold --out-queries /app/data/eval/queries.placeholder.json --out-qrels /app/data/eval/qrels.placeholder.json --per-category 1
+
+      - name: Run eval smoke
+        run: |
+          docker compose exec -T api python -m app.eval.runner --queries /app/data/eval/queries.placeholder.json --output-dir /app/data/eval/output/runs --configs baseline --size 5 --langs ara --pri-only
+          docker compose exec -T api python -m app.eval.metrics --run-dir /app/data/eval/output/runs --qrels /app/data/eval/qrels.placeholder.json --out-dir /app/data/eval/output/metrics --p-at 5 --recall-at 5 --success-at 5
+
+      - name: Upload eval smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-smoke-output
+          path: |
+            data/eval/output/runs
+            data/eval/output/metrics
+          if-no-files-found: ignore
+
+      - name: Dump API logs on failure
+        if: failure()
+        run: docker compose logs --tail=200 api
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
