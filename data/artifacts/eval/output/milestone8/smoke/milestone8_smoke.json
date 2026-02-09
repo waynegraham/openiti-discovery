@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "query": "الشافعي",
+  "size": 20,
+  "langs": "ar",
+  "expect_degraded": false,
+  "bm25_total": 0,
+  "vector_total": 140895,
+  "hybrid_total": 140895,
+  "hybrid_effective_mode": "hybrid",
+  "hybrid_warnings": []
+}

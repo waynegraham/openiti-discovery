@@ -1,0 +1,17 @@
+{
+  "config": "hybrid_ck100_rrf30",
+  "candidate_k": 100,
+  "rrf_k": 30,
+  "precision_at_10": 0.0,
+  "recall_at_100": 0.0,
+  "map": 0.0,
+  "task_success_rate_pct": 0.0,
+  "baseline_config": "full_pipeline",
+  "baseline_metrics": {
+    "precision_at_10": 0.0,
+    "recall_at_100": 0.0,
+    "map": 0.0,
+    "task_success_rate_pct": 0.0
+  },
+  "subset_manifest": "/artifacts/milestone8/input/subsets.sample.json"
+}

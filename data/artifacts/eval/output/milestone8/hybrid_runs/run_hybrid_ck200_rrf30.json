@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "config": "hybrid_ck200_rrf30",
+    "size": 20,
+    "page_size": 20,
+    "pri_only": true,
+    "langs": [
+      "ar"
+    ],
+    "generated_at_epoch": 1770597503.7044513,
+    "query_latencies_ms": [
+      287.74443799920846,
+      272.5543310007197,
+      292.5829089981562,
+      297.4931919998198,
+      273.78090400088695
+    ],
+    "effective_mode_counts": {
+      "hybrid": 5
+    },
+    "warnings_seen": []
+  },
+  "results": []
+}

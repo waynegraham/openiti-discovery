@@ -1,0 +1,25 @@
+{
+  "runs": [
+    {
+      "label": "Small Subset",
+      "run_subdir": "small",
+      "index_name": "openiti_chunks_v1",
+      "ingest_work_limit": 250,
+      "corpus_size_lines": 1000000
+    },
+    {
+      "label": "Medium Subset",
+      "run_subdir": "medium",
+      "index_name": "openiti_chunks_v2",
+      "ingest_work_limit": 1200,
+      "corpus_size_lines": 5000000
+    },
+    {
+      "label": "Full Corpus",
+      "run_subdir": "full",
+      "index_name": "openiti_chunks_v3",
+      "ingest_work_limit": 4500,
+      "corpus_size_lines": 20000000
+    }
+  ]
+}

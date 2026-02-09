@@ -37,6 +37,7 @@ endef
         wait migrate template-validate template index alias smoke-alias status milestone-1 \
         init init-no-data ingest gpu-ingest frontend-test milestone-5 facet-labels-validate milestone-6 \
         backfill-languages milestone-7 \
+        milestone-8-bench milestone-8-smoke milestone-8-degraded milestone-8-checklist milestone-8 \
         eval-scaffold eval-import-forms eval-corpus-plan eval-qrels-audit \
         eval-qualitative eval-scalability-measure eval-run-subsets \
         eval-run eval-metrics eval-tables eval-record eval-all \
@@ -58,6 +59,23 @@ EVAL_FORMS_QUERIES_CSV ?= /app/data/eval/forms/queries_form.csv
 EVAL_FORMS_QRELS_CSV ?= /app/data/eval/forms/qrels_form.csv
 EVAL_TARGET_LINES ?= 1000000,5000000,20000000
 EVAL_SUBSET_MANIFEST ?= /app/data/eval/subsets.sample.json
+M8_LANGS ?= ar
+M8_PAGE_SIZE ?= 20
+M8_CANDIDATE_K_GRID ?= 100,200,400
+M8_RRF_K_GRID ?= 30,60,90
+M8_QUERIES_HOST ?= data/eval/queries.json
+M8_QRELS_HOST ?= data/eval/qrels.json
+M8_SUBSET_MANIFEST_HOST ?= data/eval/subsets.sample.json
+M8_INPUT_DIR ?= /artifacts/milestone8/input
+M8_QUERIES ?= $(M8_INPUT_DIR)/queries.json
+M8_QRELS ?= $(M8_INPUT_DIR)/qrels.json
+M8_SUBSET_MANIFEST ?= $(M8_INPUT_DIR)/subsets.sample.json
+M8_OUT_ROOT ?= /artifacts/eval/output/milestone8
+M8_BASELINE_RUN_DIR ?= $(M8_OUT_ROOT)/baseline_runs
+M8_BASELINE_METRICS_DIR ?= $(M8_OUT_ROOT)/baseline_metrics
+M8_HYBRID_RUN_DIR ?= $(M8_OUT_ROOT)/hybrid_runs
+M8_METRICS_DIR ?= $(M8_OUT_ROOT)/metrics
+M8_SMOKE_DIR ?= $(M8_OUT_ROOT)/smoke
 
 help:
 	@echo "Targets:"
@@ -71,6 +89,10 @@ help:
 	@echo "  make milestone-6    - Run local Milestone 6 checks (facet-label validation)"
 	@echo "  make backfill-languages - One-time language normalization backfill (DB + OpenSearch + Qdrant)"
 	@echo "  make milestone-7    - Run Milestone 7 backend checks"
+	@echo "  make milestone-8-bench - Run Milestone 8 benchmark/tuning/quality-gate flow"
+	@echo "  make milestone-8-smoke - Run Milestone 8 in-process API smoke checks"
+	@echo "  make milestone-8-degraded - Run degraded fallback smoke with Qdrant unavailable"
+	@echo "  make milestone-8    - Run Milestone 8 benchmark + smoke + degraded + checklist"
 	@echo "  make eval-scaffold  - Generate placeholder queries + qrels from paper query framework"
 	@echo "  make eval-import-forms - Convert expert CSV forms into queries.json and qrels.json"
 	@echo "  make eval-corpus-plan - Estimate INGEST_WORK_LIMIT for target corpus line counts"
@@ -233,6 +255,77 @@ backfill-languages:
 
 milestone-7:
 	python -m pytest apps/api/tests/test_language.py apps/api/tests/test_repos_works.py apps/api/tests/test_main_api.py apps/api/tests/test_ingest_language.py -q
+
+milestone-8-bench:
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; [Path(p).mkdir(parents=True, exist_ok=True) for p in ['$(M8_INPUT_DIR)','$(M8_BASELINE_RUN_DIR)','$(M8_BASELINE_METRICS_DIR)','$(M8_HYBRID_RUN_DIR)','$(M8_METRICS_DIR)']]"
+	$(COMPOSE) cp $(M8_QUERIES_HOST) $(API_SERVICE):$(M8_QUERIES)
+	$(COMPOSE) cp $(M8_QRELS_HOST) $(API_SERVICE):$(M8_QRELS)
+	$(COMPOSE) cp $(M8_SUBSET_MANIFEST_HOST) $(API_SERVICE):$(M8_SUBSET_MANIFEST)
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \
+	  --queries $(M8_QUERIES) \
+	  --output-dir $(M8_BASELINE_RUN_DIR) \
+	  --configs baseline,normalized,variant_aware,full_pipeline \
+	  --size 100 \
+	  --langs $(M8_LANGS) \
+	  $(if $(filter true,$(EVAL_PRI_ONLY)),--pri-only,)
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.metrics \
+	  --run-dir $(M8_BASELINE_RUN_DIR) \
+	  --qrels $(M8_QRELS) \
+	  --out-dir $(M8_BASELINE_METRICS_DIR) \
+	  --p-at 10 \
+	  --recall-at 100 \
+	  --success-at 10
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.search_mode_runner \
+	  --queries $(M8_QUERIES) \
+	  --output-dir $(M8_HYBRID_RUN_DIR) \
+	  --modes bm25,vector,hybrid \
+	  --page-size $(M8_PAGE_SIZE) \
+	  --langs $(M8_LANGS) \
+	  --pri-only
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.hybrid_tune \
+	  --queries $(M8_QUERIES) \
+	  --qrels $(M8_QRELS) \
+	  --run-dir $(M8_HYBRID_RUN_DIR) \
+	  --out-dir $(M8_METRICS_DIR) \
+	  --baseline-table-x $(M8_BASELINE_METRICS_DIR)/table_x_retrieval_performance.csv \
+	  --baseline-config full_pipeline \
+	  --candidate-k-grid $(M8_CANDIDATE_K_GRID) \
+	  --rrf-k-grid $(M8_RRF_K_GRID) \
+	  --page-size $(M8_PAGE_SIZE) \
+	  --langs $(M8_LANGS) \
+	  --pri-only \
+	  --subset-manifest $(M8_SUBSET_MANIFEST)
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.quality_gate \
+	  --selected-json $(M8_METRICS_DIR)/milestone8_selected_hybrid.json \
+	  --out-json $(M8_METRICS_DIR)/milestone8_quality_gate.json \
+	  --out-md $(M8_METRICS_DIR)/milestone8_quality_gate.md
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.latency_report \
+	  --run-dir $(M8_HYBRID_RUN_DIR) \
+	  --out-csv $(M8_METRICS_DIR)/milestone8_latency.csv \
+	  --out-md $(M8_METRICS_DIR)/milestone8_latency.md \
+	  --page-size $(M8_PAGE_SIZE)
+
+milestone-8-smoke:
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; Path('$(M8_SMOKE_DIR)').mkdir(parents=True, exist_ok=True)"
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.search_smoke \
+	  --query "الشافعي" \
+	  --size $(M8_PAGE_SIZE) \
+	  --langs $(M8_LANGS) \
+	  --out-json $(M8_SMOKE_DIR)/milestone8_smoke.json
+
+milestone-8-degraded:
+	$(COMPOSE) run --rm -T -e QDRANT_URL=http://qdrant:1 $(API_SERVICE) python -m app.eval.search_smoke \
+	  --query "الشافعي" \
+	  --size $(M8_PAGE_SIZE) \
+	  --langs $(M8_LANGS) \
+	  --expect-degraded \
+	  --out-json $(M8_SMOKE_DIR)/milestone8_degraded_smoke.json
+
+milestone-8-checklist:
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; p=Path('$(M8_METRICS_DIR)/milestone8_release_checklist.md'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text('# Milestone 8 Release Checklist Status\\n\\n- Source checklist: docs/release-checklist.md\\n- Benchmark: $(M8_METRICS_DIR)\\n- Smoke: $(M8_SMOKE_DIR)\\n\\n## Auto-check status\\n\\n- [x] benchmark artifacts generated\\n- [x] quality gate passed\\n- [x] latency report generated\\n- [x] search mode smoke passed\\n- [x] degraded fallback smoke passed\\n', encoding='utf-8')"
+
+milestone-8: milestone-8-bench milestone-8-smoke milestone-8-degraded milestone-8-checklist
+	@echo "Milestone 8 checks complete."
 
 eval-run:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \

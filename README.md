@@ -341,6 +341,15 @@ The API container includes a full reproducible workflow for conference/paper exp
 * `make eval-record` -> append run metadata to `data/eval/output/experiment_runs.csv`
 * `make eval-all` -> run `eval-run`, `eval-metrics`, `eval-tables`, `eval-record`
 
+### Milestone 8 Validation (Docker-first)
+
+* `make milestone-8-bench` -> baseline metrics, hybrid tuning sweep, no-regression quality gate, latency report
+* `make milestone-8-smoke` -> search mode smoke (`bm25`, `vector`, `hybrid`) and reading-route checks
+* `make milestone-8-degraded` -> degraded fallback smoke (`hybrid` -> `bm25` when Qdrant unavailable)
+* `make milestone-8` -> full Milestone 8 flow (`bench` + `smoke` + `degraded` + checklist artifact)
+
+Milestone 8 artifacts are written under `/artifacts/eval/output/milestone8` in the API container.
+
 ### Query + Judgments Authoring
 
 * `make eval-scaffold` -> generate placeholder `queries.placeholder.json` and `qrels.placeholder.json`

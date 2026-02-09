@@ -1,0 +1,5 @@
+retrieval_configuration,precision_at_10,recall_at_100,map,task_success_rate_pct
+baseline,0.0000,0.0000,0.0000,0.0000
+full_pipeline,0.0000,0.0000,0.0000,0.0000
+normalized,0.0000,0.0000,0.0000,0.0000
+variant_aware,0.0000,0.0000,0.0000,0.0000

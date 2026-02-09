@@ -174,7 +174,7 @@ Implementation notes:
 ## Milestone 7: Multi-language and Metadata Robustness
 
 Scope: Move from Arabic-centric heuristics to stated metadata/language support.
-Status: Planned
+Status: Complete (February 8, 2026)
 
 Acceptance criteria:
 - Ingest language filtering works for configured languages (`SUPPORTED_LANGUAGES`, default `ar,en`) without hardcoded Arabic-only assumptions.
@@ -231,12 +231,76 @@ Discussion notes for domain experts:
 ## Milestone 8: Quality, Performance, and Release Readiness
 
 Scope: Tune retrieval/latency and lock release standards.
+Status: Planned (target after Milestone 6 closure)
 
 Acceptance criteria:
-- Baseline performance targets are defined and met on a representative subset.
-- Hybrid settings (`candidate_k`, `rrf_k`) are benchmarked with recorded rationale.
-- End-to-end test suite passes (`api` unit plus integration smoke for search modes).
-- Release checklist is green: ingest, search modes, filters, facets, degraded fallback, and reading routes.
+- Representative subset uses existing manifest (`data/eval/subsets.sample.json`) and evaluation focuses on Arabic (`EVAL_LANGS=ar`).
+- Latency is measured and reported at `page_size=20` with classification bands:
+  - `<50ms` = `Excellent`
+  - `<100ms` = `Good`
+  - `100-300ms` = `Acceptable`
+  - `>300ms` = `Poor`
+- Latency classification is report-only (non-blocking for milestone pass/fail).
+- Hybrid settings are benchmarked with an explicit matrix for `candidate_k` and `rrf_k`, and final selection is documented with rationale.
+- Quality gating uses no-regression rule against current `full_pipeline` baseline:
+  - selected hybrid config must be `>=` baseline on all of:
+    - `precision@10`
+    - `recall@100`
+    - `MAP`
+    - `task_success_rate_pct`
+- End-to-end validation passes:
+  - backend API tests
+  - integration smoke for `bm25`, `vector`, and `hybrid`
+  - degraded mode check confirms hybrid fallback to BM25 when Qdrant is unavailable
+- Release checklist is green for ingest, search modes, filters, facets, degraded fallback, and reading routes.
+
+Implementation plan:
+1. Add Milestone 8 benchmark configuration contract in docs/Makefile variables:
+   - `EVAL_LANGS=ar`
+   - `EVAL_SIZE=20` for search latency requests
+   - reuse `EVAL_SUBSET_MANIFEST=/app/data/eval/subsets.sample.json`
+2. Add a repeatable benchmark runner target (for example `make milestone-8-bench`) that:
+   - runs retrieval experiments (`eval-run`, `eval-metrics`)
+   - runs latency sampling for `bm25`, `vector`, and `hybrid` at `page_size=20`
+   - emits machine-readable and markdown summaries under `data/eval/output/metrics/`
+3. Implement hybrid tuning sweep over controlled values for:
+   - candidate pool (`min`, `max`, multiplier-derived `candidate_k`)
+   - `rrf_k`
+4. Store each tuning run with config snapshot and metrics output for reproducibility.
+5. Add a decision artifact (`data/eval/output/metrics/milestone8_hybrid_decision.md`) recording:
+   - tested configs
+   - quality metrics comparison vs baseline
+   - chosen config and rationale
+6. Add quality gate script/check that fails if selected config regresses any required quality metric vs `full_pipeline`.
+7. Add search-mode smoke tests for `bm25`, `vector`, and `hybrid`, including facet-filter path and pagination sanity.
+8. Add degraded-mode smoke test that simulates Qdrant unavailability and verifies:
+   - request with `mode=hybrid`
+   - response has `effective_mode=bm25`
+   - warning contains `qdrant_unavailable_fallback_bm25`
+9. Add release checklist artifact (`docs/release-checklist.md` or milestone-local section) with pass/fail fields for:
+   - ingest resume correctness
+   - search-mode correctness
+   - filters/facets
+   - degraded fallback
+   - reading routes (`/chunks/{chunk_id}`, `/works/{work_id}`, version-switch resolve path)
+10. Add `make milestone-8` target that runs Docker-first end-to-end validation:
+    - benchmark + quality gate
+    - smoke tests
+    - checklist generation/verification
+11. Update README milestone status and operator guidance for running Milestone 8 validation locally.
+
+Execution sequence:
+1. Land benchmark + latency reporting harness first.
+2. Land hybrid tuning sweep + decision artifact second.
+3. Land quality gate enforcement third.
+4. Land smoke/degraded fallback tests fourth.
+5. Land release checklist and `make milestone-8` orchestration fifth.
+6. Gate completion on all acceptance criteria with stored benchmark evidence.
+
+Out of scope for Milestone 8:
+- Multilingual optimization beyond Arabic-focused evaluation.
+- New ranking paradigms beyond BM25/vector/hybrid + RRF tuning.
+- Production autoscaling/SLO enforcement infrastructure outside local Docker validation.
 
 ## Project-Level Definition of Done
 
