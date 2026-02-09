@@ -1,0 +1,4 @@
+local_path	version_uri	tags	date	author_ar	author_lat	author_lat_shuhra	author_lat_full_name	title_ar	title_lat	book	status	ed_info	id	language
+data/a1/w1/v1.ara1.mARkdown	a1.w1.v1	GAL@period-abbasid :: born@Baghdad_RE	450	مؤلف	Author	Author	Author Full	كتاب	Book	book	pri		1	ara
+data/a2/w2/v2.eng1.mARkdown	a2.w2.v2	GAL@period-abbasid :: born@Cairo_RE	451	مؤلف2	Author2	Author2	Author2 Full	كتاب2	Book2	book2	sec		2	eng
+data/a3/w3/v3.zzz1.mARkdown	a3.w3.v3	GAL@period-abbasid :: born@Rayy_RE	452	مؤلف3	Author3	Author3	Author3 Full	كتاب3	Book3	book3	pri		3	

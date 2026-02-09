@@ -35,7 +35,7 @@ def list_work_versions(
 ) -> list[dict]:
     preferred_langs = preferred_langs or []
     params: dict[str, object] = {"work_id": work_id}
-    order_by_parts = ["v.is_pri DESC"]
+    order_by_parts: list[str] = []
 
     if preferred_langs:
         rank_parts: list[str] = []
@@ -43,8 +43,11 @@ def list_work_versions(
             key = f"pref_lang_{idx}"
             params[key] = lang
             rank_parts.append(f"WHEN :{key} THEN {idx}")
-        order_by_parts.append(f"CASE v.lang {' '.join(rank_parts)} ELSE 999 END")
+        order_by_parts.append(f"CASE v.lang {' '.join(rank_parts)} WHEN 'unknown' THEN 999 ELSE 998 END")
+    else:
+        order_by_parts.append("CASE v.lang WHEN 'unknown' THEN 999 ELSE 0 END")
 
+    order_by_parts.append("v.is_pri DESC")
     order_by_parts.append("v.version_id")
     order_by_clause = ",\n          ".join(order_by_parts)
 

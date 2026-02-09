@@ -19,7 +19,7 @@ INDEX_SIZES_LOCAL_DIR ?= data/eval/output/metrics
 # make ingest INGEST_WORK_LIMIT=200 EMBEDDING_DEVICE=cpu
 INGEST_WORK_LIMIT ?= 200
 INGEST_ONLY_PRI ?= true
-INGEST_LANGS ?= ara
+INGEST_LANGS ?= ar,en
 EMBEDDINGS_ENABLED ?= true
 EMBEDDING_DEVICE ?= cpu
 
@@ -36,6 +36,7 @@ endef
 .PHONY: help up down reset logs ps \
         wait migrate template-validate template index alias smoke-alias status milestone-1 \
         init init-no-data ingest gpu-ingest frontend-test milestone-5 facet-labels-validate milestone-6 \
+        backfill-languages milestone-7 \
         eval-scaffold eval-import-forms eval-corpus-plan eval-qrels-audit \
         eval-qualitative eval-scalability-measure eval-run-subsets \
         eval-run eval-metrics eval-tables eval-record eval-all \
@@ -50,7 +51,7 @@ EVAL_TABLES_DIR ?= /app/data/eval/output/tables
 EVAL_SCALABILITY_MANIFEST ?= /app/data/eval/scalability.json
 EVAL_CONFIGS ?= baseline,normalized,variant_aware,full_pipeline
 EVAL_SIZE ?= 100
-EVAL_LANGS ?= ara
+EVAL_LANGS ?= ar
 EVAL_PRI_ONLY ?= true
 EVAL_SCAFFOLD_PER_CATEGORY ?= 4
 EVAL_FORMS_QUERIES_CSV ?= /app/data/eval/forms/queries_form.csv
@@ -62,12 +63,14 @@ help:
 	@echo "Targets:"
 	@echo "  make init           - Start stack, run migrations, apply template, create index, run subset ingest"
 	@echo "  make init-no-data   - Same as init, but skip ingest"
-	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ara)"
+	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ar/en)"
 	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
 	@echo "  make frontend-test  - Run lightweight frontend route/API integration tests"
 	@echo "  make milestone-5    - Run backend API tests plus frontend integration tests for reading routes"
 	@echo "  make facet-labels-validate - Validate config/facet_labels.csv editorial data"
 	@echo "  make milestone-6    - Run local Milestone 6 checks (facet-label validation)"
+	@echo "  make backfill-languages - One-time language normalization backfill (DB + OpenSearch + Qdrant)"
+	@echo "  make milestone-7    - Run Milestone 7 backend checks"
 	@echo "  make eval-scaffold  - Generate placeholder queries + qrels from paper query framework"
 	@echo "  make eval-import-forms - Convert expert CSV forms into queries.json and qrels.json"
 	@echo "  make eval-corpus-plan - Estimate INGEST_WORK_LIMIT for target corpus line counts"
@@ -151,7 +154,7 @@ smoke-alias:
 	@SMOKE_ID="smoke-$$(date +%s)"; \
 	curl -fsS -X POST "$(OS_URL)/$(OS_ALIAS)/_doc/$$SMOKE_ID?refresh=wait_for" \
 	  -H "Content-Type: application/json" \
-	  -d '{"chunk_id":"'"$$SMOKE_ID"'","work_id":"smoke_work","version_id":"smoke_version","author_id":"smoke_author","lang":"ara","is_pri":true,"author_name_ar":"smoke","author_name_lat":"smoke","work_title_ar":"smoke","work_title_lat":"smoke","date_ah":1,"date_ce":1,"period":"test","period_tag":"test","region":"test","tags":["smoke"],"version_label":"smoke","type":"passage","title":"smoke","content":"smoke"}' >/dev/null; \
+	  -d '{"chunk_id":"'"$$SMOKE_ID"'","work_id":"smoke_work","version_id":"smoke_version","author_id":"smoke_author","lang":"ar","is_pri":true,"author_name_ar":"smoke","author_name_lat":"smoke","work_title_ar":"smoke","work_title_lat":"smoke","date_ah":1,"date_ce":1,"period":"test","period_tag":"test","region":"test","tags":["smoke"],"version_label":"smoke","type":"passage","title":"smoke","content":"smoke"}' >/dev/null; \
 	HTTP_CODE="$$(curl -s -o /dev/null -w "%{http_code}" -X GET "$(OS_URL)/$(OS_ALIAS)/_search" -H "Content-Type: application/json" -d '{"size":1,"query":{"term":{"chunk_id":"'"$$SMOKE_ID"'"}}}')"; \
 	if [ "$$HTTP_CODE" != "200" ]; then echo "Alias smoke query failed with HTTP $$HTTP_CODE"; exit 1; fi; \
 	curl -fsS -X DELETE "$(OS_URL)/$(OS_ALIAS)/_doc/$$SMOKE_ID?refresh=wait_for" >/dev/null || true
@@ -224,6 +227,12 @@ facet-labels-validate:
 	python apps/api/scripts/validate_facet_labels.py --path config/facet_labels.csv
 
 milestone-6: facet-labels-validate
+
+backfill-languages:
+	$(COMPOSE) exec -T $(API_SERVICE) python scripts/backfill_languages.py
+
+milestone-7:
+	python -m pytest apps/api/tests/test_language.py apps/api/tests/test_repos_works.py apps/api/tests/test_main_api.py apps/api/tests/test_ingest_language.py -q
 
 eval-run:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \

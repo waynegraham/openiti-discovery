@@ -182,7 +182,7 @@ def main() -> None:
     )
     parser.add_argument("--size", type=int, default=100, help="Top-k results per query")
     parser.add_argument("--pri-only", action="store_true", help="Apply is_pri filter")
-    parser.add_argument("--langs", default="ara", help="Comma-separated language filters")
+    parser.add_argument("--langs", default="ar", help="Comma-separated language filters")
 
     args = parser.parse_args()
 

@@ -248,9 +248,46 @@ def test_search_vector_forwards_filters_and_normalizes_version(client, monkeypat
     assert captured["vector_search"]["period"] == ["Abb"]
     assert captured["vector_search"]["region"] == ["Basra"]
     assert captured["vector_search"]["tags"] == ["GAL@adab"]
+    assert captured["vector_search"]["langs"] is None
     assert captured["vector_search"]["version"] == ["PRI"]
     assert captured["vector_count"]["version"] == ["PRI"]
     assert captured["filter_chunk_ids"]["version"] == ["PRI"]
+
+
+def test_search_normalizes_language_alias_filters(client, monkeypatch):
+    monkeypatch.setattr(
+        main,
+        "embedding_trace",
+        lambda: {
+            "embedding_model": "m",
+            "embedding_model_version": "v",
+            "normalization_version": "n",
+        },
+    )
+    monkeypatch.setattr(main, "encode_texts", lambda texts, input_type: [[0.2, 0.3]])
+
+    captured: dict[str, dict] = {}
+
+    def fake_vector_search(**kwargs):
+        captured["vector_search"] = kwargs
+        return [{"chunk_id": "c1", "score": 0.9, "payload": {"chunk_id": "c1"}}]
+
+    monkeypatch.setattr(main, "vector_search", fake_vector_search)
+    monkeypatch.setattr(main, "vector_count", lambda **kwargs: 1)
+    monkeypatch.setattr(main, "filter_chunk_ids", lambda chunk_ids, **kwargs: set(chunk_ids))
+    monkeypatch.setattr(main, "fetch_sources_by_chunk_ids", lambda chunk_ids: {})
+
+    res = client.get(
+        "/search",
+        params={
+            "q": "abc",
+            "mode": "vector",
+            "langs": "ara,eng,zzz",
+        },
+    )
+
+    assert res.status_code == 200
+    assert captured["vector_search"]["langs"] == ["ar", "en", "unknown"]
 
 
 def test_search_hybrid_forwards_filters_to_bm25_and_vector(client, monkeypatch):
@@ -360,9 +397,10 @@ def test_get_work_detail_404(client, monkeypatch):
     assert res.json()["detail"] == "work not found"
 
 
-def test_get_versions_for_work_uses_locale_and_query_lang_preference(client, monkeypatch):
+def test_get_versions_for_work_uses_configured_language_order(client, monkeypatch):
     monkeypatch.setattr(main, "get_engine", lambda: object())
     monkeypatch.setattr(main, "get_work", lambda engine, work_id: {"work_id": work_id, "author_id": "a1"})
+    monkeypatch.setattr(main.settings, "SUPPORTED_LANGUAGES", "ar,en,fa")
 
     captured: dict[str, list[str]] = {}
 
@@ -372,7 +410,7 @@ def test_get_versions_for_work_uses_locale_and_query_lang_preference(client, mon
             {
                 "version_id": "v1",
                 "work_id": work_id,
-                "lang": "ara",
+                "lang": "ar",
                 "is_pri": True,
                 "source_uri": None,
                 "repo_path": "repo/v1",
@@ -387,7 +425,7 @@ def test_get_versions_for_work_uses_locale_and_query_lang_preference(client, mon
     )
 
     assert res.status_code == 200
-    assert captured["preferred_langs"][:2] == ["fas", "ara"]
+    assert captured["preferred_langs"] == ["ar", "en", "fa"]
     assert res.json()[0]["version_id"] == "v1"
 
 

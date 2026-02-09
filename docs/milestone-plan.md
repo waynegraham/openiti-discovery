@@ -174,12 +174,59 @@ Implementation notes:
 ## Milestone 7: Multi-language and Metadata Robustness
 
 Scope: Move from Arabic-centric heuristics to stated metadata/language support.
+Status: Planned
 
 Acceptance criteria:
-- Ingest language filtering works for configured languages without hardcoded Arabic-only assumptions.
-- Metadata-based version selection is deterministic and documented.
+- Ingest language filtering works for configured languages (`SUPPORTED_LANGUAGES`, default `ar,en`) without hardcoded Arabic-only assumptions.
+- Metadata-based version selection is deterministic and documented for `/works/{work_id}/versions`.
 - Subset ingest can include at least two languages when present in corpus.
-- Tests validate language filtering and PRI/ALT selection behavior.
+- Unknown/missing language tags are logged, normalized to `unknown`, and ranked last.
+- One-time backfill migrates non-normalized language metadata across relational DB, OpenSearch docs, and Qdrant payloads.
+- Tests validate language filtering, unknown handling, and PRI/ALT selection behavior.
+
+Implementation plan:
+1. Audit ingest language gates and remove Arabic-only defaults from parser, filtering, and subset selection paths.
+2. Introduce a single language-configuration contract in settings/env:
+   - `SUPPORTED_LANGUAGES` is environment-configurable with default `ar,en`
+   - include `fa` when configured
+3. Add a versioned language-alias mapping file in the repository and load it at startup for normalization rules.
+4. Normalize language tags from metadata using alias mapping with canonical outputs (`ar`, `en`, `fa`, `unknown`).
+5. Apply metadata precedence rules on conflict:
+   - source JSON first
+   - DB row second
+6. Ensure version records persist normalized language and `is_pri`/`version_label` metadata consistently for downstream selection logic.
+7. Implement deterministic version ranking helper for `/works/{work_id}/versions`:
+   - known languages by configured order
+   - then `is_pri=true` before `is_pri=false` within the same language bucket
+   - then stable tie-breaker (`version_id`)
+   - always place `unknown` last
+8. Replace implicit Arabic-first assumptions in `/works/{work_id}/versions` with the ranking helper.
+9. Update subset ingest selection to include at least two languages when available in corpus metadata.
+10. Add curated multi-language fixtures for ingest/API test coverage.
+11. Add tests:
+   - ingest unit tests for configured-language filtering and unknown-tag fallback
+   - API tests for deterministic ranking in `/works/{work_id}/versions`
+   - regression tests for alias mapping and metadata conflict precedence
+12. Implement a one-time backfill migration command to rewrite normalized language metadata across relational DB, OpenSearch, and Qdrant.
+13. Document language configuration, alias mapping, normalization rules, ranking precedence, and migration runbook in `README.md` and ingest docs.
+14. Add milestone validation target (for example `make milestone-7`) wiring ingest + API tests plus migration dry-run validation.
+
+Execution sequence:
+1. Land language config + normalization contract first.
+2. Land deterministic ranking in `/works/{work_id}/versions` second.
+3. Land subset multi-language ingest behavior and curated fixtures third.
+4. Land backfill migration fourth.
+5. Land tests/docs/validation wiring fifth.
+6. Gate completion on acceptance criteria plus green ingest/API tests and successful migration verification.
+
+Out of scope for Milestone 7:
+- Automatic language detection from raw text when metadata is missing.
+- New translation/transliteration pipelines.
+- Search ranking changes beyond deterministic metadata/language selection behavior.
+
+Discussion notes for domain experts:
+- Confirm long-term policy that language ordering outranks PRI/ALT category across different language buckets.
+- Confirm whether subset ingest should remain "at least two languages when available" or move to quota-balanced sampling.
 
 ## Milestone 8: Quality, Performance, and Release Readiness
 

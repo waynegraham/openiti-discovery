@@ -17,6 +17,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 
 from ..db import get_engine
+from ..language import (
+    UNKNOWN_LANGUAGE,
+    configured_supported_languages,
+    infer_language_from_text,
+    normalize_language_tag,
+)
 from ..settings import settings
 from ..clients.opensearch_client import ensure_write_index_target, get_opensearch
 from ..clients.qdrant_client import get_qdrant
@@ -34,7 +40,13 @@ LOG = logging.getLogger("openiti.ingest")
 
 DEFAULT_TARGET_WORKS = int(os.getenv("INGEST_WORK_LIMIT", "200") or "200")
 DEFAULT_ONLY_PRI = os.getenv("INGEST_ONLY_PRI", "true").lower() in ("1", "true", "yes")
-DEFAULT_LANGS = os.getenv("INGEST_LANGS", "ara").split(",")  # for this runner we expect ara
+DEFAULT_LANGS = [
+    normalize_language_tag(v)
+    for v in os.getenv("INGEST_LANGS", settings.SUPPORTED_LANGUAGES).split(",")
+    if v.strip()
+]
+if not DEFAULT_LANGS:
+    DEFAULT_LANGS = configured_supported_languages()
 CHUNK_TARGET_WORDS = int(os.getenv("CHUNK_TARGET_WORDS", "300") or "300")
 CHUNK_MAX_OVERLAP_WORDS = int(os.getenv("CHUNK_MAX_OVERLAP_WORDS", "0") or "0")
 SKIP_EXISTING = os.getenv("SKIP_EXISTING", "true").lower() in ("1", "true", "yes")
@@ -183,6 +195,24 @@ def _metadata_is_pri(status: str | None, version_label: str | None, fallback: bo
     return fallback
 
 
+def _metadata_language(row: dict) -> tuple[str, str | None]:
+    candidates = [
+        row.get("language"),
+        row.get("lang"),
+        row.get("lang_code"),
+        row.get("language_code"),
+        row.get("iso_lang"),
+    ]
+    for candidate in candidates:
+        if candidate and str(candidate).strip():
+            return normalize_language_tag(str(candidate)), str(candidate)
+    return UNKNOWN_LANGUAGE, None
+
+
+def _infer_language_from_path(repo_path: str) -> str:
+    return infer_language_from_text(repo_path)
+
+
 def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, dict], dict[str, dict]]:
     csv_path = corpus_root / "OpenITI_metadata_2023-1-8.csv"
     if not csv_path.exists():
@@ -196,6 +226,9 @@ def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, 
         for row in reader:
             local_path = _normalize_repo_path(row.get("local_path") or "")
             version_uri = (row.get("version_uri") or "").strip()
+            lang_from_row, raw_lang = _metadata_language(row)
+            inferred_lang = _infer_language_from_path(local_path or version_uri)
+            normalized_lang = lang_from_row if lang_from_row != UNKNOWN_LANGUAGE else inferred_lang
             tags_raw = [t.strip() for t in (row.get("tags") or "").split(" :: ") if t.strip()]
 
             period_tag, period_label = _extract_period(tags_raw)
@@ -215,6 +248,8 @@ def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, 
                 "book": (row.get("book") or "").strip() or None,
                 "status": (row.get("status") or "").strip() or None,
                 "version_label": _version_label((row.get("status") or "").strip()),
+                "lang": normalized_lang,
+                "lang_raw": raw_lang,
                 "date_ah": date_ah,
                 "date_ce": date_ce,
                 "period_tag": period_tag,
@@ -248,7 +283,7 @@ class DiscoveredText:
     repo_path: str  # path relative to CORPUS_ROOT
     abs_path: Path
     is_pri: bool
-    lang: str  # 'ara' for this runner
+    lang: str  # canonical language tag (ar/en/fa/unknown)
 
 
 def sha256_file(p: Path) -> str:
@@ -345,6 +380,46 @@ def _resolve_local_path(corpus_root: Path, local_path: str) -> tuple[str, Path] 
     return rel, abs_path
 
 
+def _supports_ingest_language(lang: str) -> bool:
+    normalized = normalize_language_tag(lang)
+    return normalized == UNKNOWN_LANGUAGE or normalized in DEFAULT_LANGS
+
+
+def _select_with_min_two_languages(
+    candidates: list[tuple[Path, str, str | None, dict]],
+    *,
+    target_works: int,
+) -> list[tuple[Path, str, str | None, dict]]:
+    if target_works <= 0 or not candidates:
+        return []
+
+    ordered = sorted(candidates, key=lambda t: t[1])
+    by_lang: dict[str, list[tuple[Path, str, str | None, dict]]] = {}
+    for item in ordered:
+        lang = normalize_language_tag(item[3].get("lang"))
+        by_lang.setdefault(lang, []).append(item)
+
+    usable_langs = [lang for lang, items in by_lang.items() if items and lang != UNKNOWN_LANGUAGE]
+    if len(usable_langs) < 2:
+        return ordered[:target_works]
+
+    selected: list[tuple[Path, str, str | None, dict]] = []
+    used_repo_paths: set[str] = set()
+    for lang in usable_langs[:2]:
+        choice = by_lang[lang][0]
+        selected.append(choice)
+        used_repo_paths.add(choice[1])
+
+    for item in ordered:
+        if len(selected) >= target_works:
+            break
+        if item[1] in used_repo_paths:
+            continue
+        selected.append(item)
+        used_repo_paths.add(item[1])
+    return selected
+
+
 def _discover_from_metadata_index(
     corpus_root: Path,
     target_works: int,
@@ -353,8 +428,8 @@ def _discover_from_metadata_index(
     if not metadata_by_path or target_works <= 0:
         return []
 
-    selected_by_work: dict[tuple[str, str], tuple[Path, str, str | None, int]] = {}
-    all_files: list[tuple[Path, str]] = []
+    selected_by_work: dict[tuple[str, str], tuple[Path, str, str | None, int, dict]] = {}
+    all_files: list[tuple[Path, str, str | None, dict]] = []
 
     for local_path, meta in metadata_by_path.items():
         repo_rel, abs_path = _resolve_local_path(corpus_root, local_path)
@@ -367,6 +442,10 @@ def _discover_from_metadata_index(
         if len(rel_parts) < 3:
             continue
 
+        resolved_lang = normalize_language_tag(meta.get("lang"))
+        if not _supports_ingest_language(resolved_lang):
+            continue
+
         status = (meta.get("status") or "").strip().lower() or None
         work_key = (rel_parts[0], rel_parts[1])
         score = _pri_score(abs_path, status)
@@ -376,21 +455,27 @@ def _discover_from_metadata_index(
                 continue
             prev = selected_by_work.get(work_key)
             if prev is None or score > prev[3] or (score == prev[3] and repo_rel < prev[1]):
-                selected_by_work[work_key] = (abs_path, repo_rel, status, score)
+                selected_by_work[work_key] = (abs_path, repo_rel, status, score, meta)
         else:
-            all_files.append((abs_path, repo_rel))
+            all_files.append((abs_path, repo_rel, status, meta))
 
     if DEFAULT_ONLY_PRI:
         selected = sorted(selected_by_work.values(), key=lambda t: t[1])[:target_works]
-        files = [(t[0], t[1]) for t in selected]
+        files = [(t[0], t[1], t[2], t[4]) for t in selected]
     else:
-        files = all_files[:target_works]
+        files = _select_with_min_two_languages(all_files, target_works=target_works)
 
     discovered: List[DiscoveredText] = []
-    for fp, repo_rel in files:
+    for fp, repo_rel, status, meta in files:
         author_id, work_id, version_id, _ = infer_ids_from_path(corpus_root, fp)
-        if "ara" not in DEFAULT_LANGS:
-            continue
+        metadata_lang = normalize_language_tag(meta.get("lang"))
+        if metadata_lang == UNKNOWN_LANGUAGE:
+            LOG.warning(
+                "Language metadata missing/unmapped for %s (raw=%s). Using unknown.",
+                repo_rel,
+                meta.get("lang_raw"),
+            )
+
         discovered.append(
             DiscoveredText(
                 author_id=author_id,
@@ -399,11 +484,11 @@ def _discover_from_metadata_index(
                 repo_path=repo_rel,
                 abs_path=fp,
                 is_pri=_metadata_is_pri(
-                    status=(meta.get("status") or "") if meta else None,
+                    status=(status or "") if status else None,
                     version_label=(meta.get("version_label") or "") if meta else None,
                     fallback=("pri" in fp.name.lower()),
                 ),
-                lang="ara",
+                lang=metadata_lang,
             )
         )
         if len(discovered) >= target_works:
@@ -418,7 +503,7 @@ def discover_200_pri_arabic(
     metadata_by_path: dict[str, dict] | None = None,
 ) -> List[DiscoveredText]:
     """
-    Discover texts by walking data/ and selecting up to target_works PRI versions in Arabic.
+    Discover texts by walking data/ and selecting up to target_works versions.
     """
     if metadata_by_path:
         discovered = _discover_from_metadata_index(corpus_root, target_works, metadata_by_path)
@@ -470,17 +555,39 @@ def discover_200_pri_arabic(
     else:
         pri_files = [f for fs in files_by_workdir.values() for f in fs]
 
+    fallback_candidates: list[tuple[Path, str, bool, str]] = []
     discovered: List[DiscoveredText] = []
     for fp in pri_files:
         author_id, work_id, version_id, repo_rel = infer_ids_from_path(corpus_root, fp)
 
-        # crude Arabic filter: allow only if requested langs include ara
-        lang = "ara"
-        if "ara" not in DEFAULT_LANGS:
+        lang = _infer_language_from_path(repo_rel)
+        if not _supports_ingest_language(lang):
             continue
+        if lang == UNKNOWN_LANGUAGE:
+            LOG.warning("Language metadata missing/unmapped for %s. Using unknown.", repo_rel)
 
         # Mark PRI by filename heuristic or single-file selection
         is_pri = True if (("PRI" in fp.name) or ("pri" in fp.name)) else DEFAULT_ONLY_PRI
+        fallback_candidates.append((fp, repo_rel, is_pri, lang))
+
+    selected_candidates = _select_with_min_two_languages(
+        [
+            (
+                fp,
+                repo_rel,
+                None,
+                {"lang": lang},
+            )
+            for fp, repo_rel, _is_pri, lang in fallback_candidates
+        ],
+        target_works=target_works,
+    )
+    selected_lookup = {repo_rel for _, repo_rel, _, _ in selected_candidates}
+
+    for fp, repo_rel, is_pri, lang in fallback_candidates:
+        if repo_rel not in selected_lookup:
+            continue
+        author_id, work_id, version_id, _ = infer_ids_from_path(corpus_root, fp)
 
         discovered.append(
             DiscoveredText(
@@ -746,6 +853,19 @@ def upsert_version(
                 "metadata": json.dumps(meta, ensure_ascii=False),
             },
         )
+
+
+def get_version_row(engine: Engine, version_id: str) -> dict | None:
+    sql = text(
+        """
+        SELECT version_id, lang, is_pri, metadata
+        FROM versions
+        WHERE version_id = :version_id
+        """
+    )
+    with engine.begin() as conn:
+        row = conn.execute(sql, {"version_id": version_id}).mappings().first()
+    return dict(row) if row else None
 
 
 def get_ingest_state(engine: Engine, version_id: str) -> IngestStateRow | None:
@@ -1106,10 +1226,21 @@ def run() -> None:
     for t in tqdm(texts, desc="Ingest versions", unit="version"):
         try:
             meta = metadata_by_path.get(t.repo_path) or metadata_by_version.get(t.abs_path.stem)
+            db_version = get_version_row(engine, t.version_id)
+
+            source_lang = normalize_language_tag((meta or {}).get("lang"))
+            db_lang = normalize_language_tag((db_version or {}).get("lang"))
+            effective_lang = source_lang if source_lang != UNKNOWN_LANGUAGE else db_lang
+            if effective_lang == UNKNOWN_LANGUAGE:
+                effective_lang = normalize_language_tag(t.lang)
+            if effective_lang == UNKNOWN_LANGUAGE:
+                LOG.warning("Language metadata missing/unmapped for %s. Using unknown.", t.repo_path)
+
+            db_is_pri = bool((db_version or {}).get("is_pri", False))
             effective_is_pri = _metadata_is_pri(
                 status=(meta.get("status") or "") if meta else None,
                 version_label=(meta.get("version_label") or "") if meta else None,
-                fallback=bool(t.is_pri),
+                fallback=db_is_pri if db_version is not None else bool(t.is_pri),
             )
             t_effective = DiscoveredText(
                 author_id=t.author_id,
@@ -1118,7 +1249,7 @@ def run() -> None:
                 repo_path=t.repo_path,
                 abs_path=t.abs_path,
                 is_pri=effective_is_pri,
-                lang=t.lang,
+                lang=effective_lang,
             )
 
             author_name_lat = None
@@ -1273,7 +1404,7 @@ def run() -> None:
                         "work_id": t.work_id,
                         "version_id": t.version_id,
                         "author_id": t.author_id,
-                        "lang": t.lang,
+                        "lang": t_effective.lang,
                         "is_pri": t_effective.is_pri,
                         "title": None,
                         "content": planned_chunk.text_norm,

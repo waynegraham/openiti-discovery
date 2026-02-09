@@ -11,6 +11,7 @@ from .clients.opensearch_client import (
 from .clients.qdrant_client import ping_qdrant, vector_count, vector_search
 from .db import get_engine, ping_db
 from .embedding_service import embedding_trace, encode_texts
+from .language import configured_supported_languages, normalize_language_values
 from .repos.chunks import get_chunk_with_neighbors
 from .repos.chunks import resolve_chunk_for_version
 from .repos.works import get_work, list_work_versions
@@ -60,24 +61,10 @@ def _normalize_version_values(values: list[str] | None) -> list[str] | None:
 
 
 def _preferred_langs(locale: str | None, query_langs: list[str] | None) -> list[str]:
-    ordered: list[str] = []
-    seen: set[str] = set()
-
-    for lang in query_langs or []:
-        if lang not in seen:
-            ordered.append(lang)
-            seen.add(lang)
-
-    locale_defaults = {
-        "ar": ["ara", "fas", "ota"],
-        "en": ["ara", "fas", "ota"],
-    }
-    for lang in locale_defaults.get((locale or "").lower(), ["ara", "fas", "ota"]):
-        if lang not in seen:
-            ordered.append(lang)
-            seen.add(lang)
-
-    return ordered
+    # Milestone 7 contract: deterministic ordering comes from configured language order.
+    _ = locale
+    _ = query_langs
+    return configured_supported_languages()
 
 
 def _search_cfg() -> dict:
@@ -196,7 +183,10 @@ def get_versions_for_work(
     if not work_row:
         raise HTTPException(status_code=404, detail="work not found")
 
-    ordered_langs = _preferred_langs(locale, _split_csv(preferred_langs))
+    ordered_langs = _preferred_langs(
+        locale,
+        normalize_language_values(_split_csv(preferred_langs)),
+    )
     rows = list_work_versions(eng, work_id, ordered_langs)
     return [WorkVersionResponse(**r) for r in rows]
 
@@ -261,7 +251,7 @@ def search(
     mode: str = Query("bm25", pattern="^(bm25|vector|hybrid)$"),
     size: int = Query(settings.DEFAULT_SIZE, ge=1, le=settings.MAX_SIZE),
     page: int = Query(1, ge=1),
-    langs: str | None = Query(None, description="Comma-separated: ara,fas,ota"),
+    langs: str | None = Query(None, description="Comma-separated language codes (e.g. ar,en,fa)"),
     pri_only: bool = Query(settings.DEFAULT_PRI_ONLY),
     period: str | None = Query(None),
     region: str | None = Query(None),
@@ -278,7 +268,7 @@ def search(
 
     trace = embedding_trace()
 
-    langs_list = _split_csv(langs)
+    langs_list = normalize_language_values(_split_csv(langs))
     period_list = _split_csv(period)
     region_list = _split_csv(region)
     tags_list = _split_csv(tags)
