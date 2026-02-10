@@ -229,7 +229,7 @@ gpu-ingest:
 	@echo "  INGEST_LANGS=$(INGEST_LANGS)"
 	@echo "  EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED)"
 	@echo "  EMBEDDING_DEVICE=cuda"
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm --gpus all \
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm \
 	  -e INGEST_MODE=subset \
 	  -e INGEST_WORK_LIMIT=$(INGEST_WORK_LIMIT) \
 	  -e INGEST_ONLY_PRI=$(INGEST_ONLY_PRI) \

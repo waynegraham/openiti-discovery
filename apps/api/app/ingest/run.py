@@ -390,10 +390,13 @@ def _select_with_min_two_languages(
     *,
     target_works: int,
 ) -> list[tuple[Path, str, str | None, dict]]:
-    if target_works <= 0 or not candidates:
+    if not candidates:
         return []
 
     ordered = sorted(candidates, key=lambda t: t[1])
+    if target_works <= 0:
+        return ordered
+
     by_lang: dict[str, list[tuple[Path, str, str | None, dict]]] = {}
     for item in ordered:
         lang = normalize_language_tag(item[3].get("lang"))
@@ -425,7 +428,7 @@ def _discover_from_metadata_index(
     target_works: int,
     metadata_by_path: dict[str, dict],
 ) -> List[DiscoveredText]:
-    if not metadata_by_path or target_works <= 0:
+    if not metadata_by_path:
         return []
 
     selected_by_work: dict[tuple[str, str], tuple[Path, str, str | None, int, dict]] = {}
@@ -460,7 +463,9 @@ def _discover_from_metadata_index(
             all_files.append((abs_path, repo_rel, status, meta))
 
     if DEFAULT_ONLY_PRI:
-        selected = sorted(selected_by_work.values(), key=lambda t: t[1])[:target_works]
+        selected = sorted(selected_by_work.values(), key=lambda t: t[1])
+        if target_works > 0:
+            selected = selected[:target_works]
         files = [(t[0], t[1], t[2], t[4]) for t in selected]
     else:
         files = _select_with_min_two_languages(all_files, target_works=target_works)
@@ -491,7 +496,7 @@ def _discover_from_metadata_index(
                 lang=metadata_lang,
             )
         )
-        if len(discovered) >= target_works:
+        if target_works > 0 and len(discovered) >= target_works:
             break
     return discovered
 
@@ -540,12 +545,12 @@ def discover_200_pri_arabic(
                 first_by_workdir[workdir] = fp
             if "pri" in fp.name.lower() and workdir not in pri_by_workdir:
                 pri_by_workdir[workdir] = fp
-                if len(pri_by_workdir) >= target_works:
+                if target_works > 0 and len(pri_by_workdir) >= target_works:
                     break
 
     if DEFAULT_ONLY_PRI:
         pri_files = list(pri_by_workdir.values())
-        if len(pri_files) < target_works:
+        if target_works > 0 and len(pri_files) < target_works:
             for workdir, fp in first_by_workdir.items():
                 if workdir in pri_by_workdir:
                     continue
@@ -600,7 +605,7 @@ def discover_200_pri_arabic(
                 lang=lang,
             )
         )
-        if len(discovered) >= target_works:
+        if target_works > 0 and len(discovered) >= target_works:
             break
 
     return discovered
