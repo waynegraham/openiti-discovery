@@ -12,7 +12,7 @@ on:
       - ".github/workflows/platform-smoke.yml"
   push:
     branches:
-      - main
+      - github_workflows
     paths:
       - "Makefile"
       - "docker-compose.yml"

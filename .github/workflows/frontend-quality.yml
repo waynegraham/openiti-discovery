@@ -7,7 +7,7 @@ on:
       - ".github/workflows/frontend-quality.yml"
   push:
     branches:
-      - main
+      - github_workflows
     paths:
       - "apps/frontend/**"
       - ".github/workflows/frontend-quality.yml"

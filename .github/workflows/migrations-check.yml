@@ -10,7 +10,7 @@ on:
       - ".github/workflows/migrations-check.yml"
   push:
     branches:
-      - main
+      - github_workflows
     paths:
       - "apps/api/alembic/**"
       - "apps/api/app/**"

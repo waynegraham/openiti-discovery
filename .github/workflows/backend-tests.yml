@@ -7,7 +7,7 @@ on:
       - ".github/workflows/backend-tests.yml"
   push:
     branches:
-      - main
+      - github_workflows
     paths:
       - "apps/api/**"
       - ".github/workflows/backend-tests.yml"

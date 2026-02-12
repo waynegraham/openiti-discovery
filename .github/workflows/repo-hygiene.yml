@@ -10,7 +10,7 @@ on:
       - ".github/workflows/repo-hygiene.yml"
   push:
     branches:
-      - main
+      - mgithub_workflowsn
     paths:
       - "opensearch/templates/openiti_chunks_template.json"
       - "config/**"
