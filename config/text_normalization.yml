@@ -7,6 +7,7 @@ pipeline:
   normalize_alef_variants: true
   normalize_persian_kaf_ya: true
   normalize_hamza_conservative: true
+  normalize_digits: true
 
 implementation_notes:
   - "Normalization is applied to text_norm for indexing and embedding."
