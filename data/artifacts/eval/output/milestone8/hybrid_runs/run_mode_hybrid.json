@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "config": "mode_hybrid",
+    "size": 100,
+    "page_size": 20,
+    "pri_only": true,
+    "langs": [
+      "ar"
+    ],
+    "generated_at_epoch": 1770597719.8468819,
+    "query_latencies_ms": [
+      301.9134429996484,
+      276.5685630001826,
+      288.7121810017561,
+      275.86605100077577,
+      272.7407230013341
+    ],
+    "effective_mode_counts": {
+      "hybrid": 5
+    },
+    "warnings_seen": []
+  },
+  "results": []
+}

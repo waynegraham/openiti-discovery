@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "config": "baseline",
+    "index": "openiti_chunks",
+    "size": 100,
+    "pri_only": true,
+    "langs": [
+      "ar"
+    ],
+    "generated_at_epoch": 1770597706.3577666
+  },
+  "results": []
+}

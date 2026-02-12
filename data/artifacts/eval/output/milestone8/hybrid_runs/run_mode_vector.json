@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "config": "mode_vector",
+    "size": 100,
+    "page_size": 20,
+    "pri_only": true,
+    "langs": [
+      "ar"
+    ],
+    "generated_at_epoch": 1770597718.4228902,
+    "query_latencies_ms": [
+      7161.6548589991,
+      266.57254899691907,
+      299.3905919975077,
+      266.8712820013752,
+      269.3102140001429
+    ],
+    "effective_mode_counts": {
+      "vector": 5
+    },
+    "warnings_seen": []
+  },
+  "results": []
+}

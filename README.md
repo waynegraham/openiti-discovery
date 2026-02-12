@@ -16,6 +16,21 @@ A local-first discovery stack for the OpenITI RELEASE corpus, combining full-tex
 
 ---
 
+## Current Behavior and Known Constraints (Canonical)
+
+This section is the source of truth for runtime constraints until Milestone 7 expands language behavior.
+
+* Ingest runner currently ignores `INGEST_MODE`; the variable is reserved for future runners.
+* Ingest language handling is currently Arabic-only: ingest proceeds only when `INGEST_LANGS` includes `ara`, and discovered texts are indexed as `lang=ara`.
+* `INGEST_WORK_LIMIT` defaults to `200` when unset.
+* `INGEST_ONLY_PRI` defaults to `true`.
+* Facet labels are loaded only from `active=true` rows in `config/facet_labels.csv`.
+* Use `make facet-labels-validate` for local editorial validation before commits. Current workflow defers CI wiring until workflow files are merged from the CI branch.
+
+Supporting docs (`docs/ingestion.md`, `docs/onboarding.md`, `docs/facet-labels.md`) are expected to match this section.
+
+---
+
 ## Architecture Overview
 
 | Component | Purpose | Version | Notes |
@@ -173,7 +188,7 @@ docker compose build api
 
 ```bash
 docker compose --profile ingest run --rm ingest
-docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true -e EMBEDDING_DEVICE=cpu ingest
+docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true -e EMBEDDING_DEVICE=auto ingest
 ```
 
 ### GPU Ingest (Windows/Linux + NVIDIA)
@@ -205,9 +220,16 @@ Ingest behavior is controlled via environment variables (see `.env.example` and 
 * `INGEST_LANGS`: comma-separated tags (currently the ingest runner only processes `ara`)
 * `INGEST_WORK_LIMIT`: limit number of works (default is 200 when unset)
 * `CHUNK_TARGET_WORDS`: default 300
+* `SKIP_EXISTING`: `true` or `false` (default `true`; skips versions already marked `complete` in `ingest_state`)
 * `EMBEDDINGS_ENABLED`: `true` or `false`
 * `EMBEDDING_DEVICE`: `cpu` or `cuda`
 * `EMBEDDING_MODEL`: default multilingual MiniLM
+
+Checkpoint behavior:
+
+* Ingest checkpoints are stored in PostgreSQL `ingest_state` by `version_id`.
+* Restarting ingest resumes from the latest safe chunk boundary for interrupted versions.
+* Set `SKIP_EXISTING=false` to force reprocess from chunk `0` even when a checkpoint exists.
 
 Curated facet tags are managed in `curated_tags.txt`. For domain-expert editing instructions, see `docs/curated-tags.md`.
 
@@ -217,6 +239,12 @@ Search/embedding runtime behavior is configured in:
 * `config/text_normalization.yml` (canonical normalization shared by ingest and query embedding)
 * `config/facet_labels.csv` (domain-editable facet labels returned by the API)
 
+Validate facet-label edits locally:
+
+```bash
+make facet-labels-validate
+```
+
 ---
 
 ## API Endpoints (Current)
@@ -225,6 +253,9 @@ Search/embedding runtime behavior is configured in:
 * `POST /embed` -> batch embedding (`texts[]`, `input_type=query|passage`)
 * `GET /search` -> query OpenSearch/Qdrant with bm25/vector/hybrid modes
 * `GET /chunks/{chunk_id}` -> chunk with neighbors
+* `GET /works/{work_id}` -> work overview metadata
+* `GET /works/{work_id}/versions` -> ordered versions for a work (locale/query language aware)
+* `GET /works/{work_id}/versions/{version_id}/chunks/resolve?target_chunk_index={n}` -> resolve exact-or-lower chunk for version switching (404 when none exists)
 
 Search modes:
 
@@ -321,7 +352,7 @@ Active development. Core live search wiring is now in place; expect ongoing iter
 
 ## Roadmap
 
-Milestones and acceptance criteria are tracked in `docs/milestone-plan.dm`.
+Milestones and acceptance criteria are tracked in `docs/milestone-plan.md`.
 Milestone 1 (Platform Integrity) was completed on February 8, 2026.
 
 ---
@@ -337,6 +368,15 @@ The API container includes a full reproducible workflow for conference/paper exp
 * `make eval-tables` -> render markdown tables and Table Z CSV
 * `make eval-record` -> append run metadata to `data/eval/output/experiment_runs.csv`
 * `make eval-all` -> run `eval-run`, `eval-metrics`, `eval-tables`, `eval-record`
+
+### Milestone 8 Validation (Docker-first)
+
+* `make milestone-8-bench` -> baseline metrics, hybrid tuning sweep, no-regression quality gate, latency report
+* `make milestone-8-smoke` -> search mode smoke (`bm25`, `vector`, `hybrid`) and reading-route checks
+* `make milestone-8-degraded` -> degraded fallback smoke (`hybrid` -> `bm25` when Qdrant unavailable)
+* `make milestone-8` -> full Milestone 8 flow (`bench` + `smoke` + `degraded` + checklist artifact)
+
+Milestone 8 artifacts are written under `/artifacts/eval/output/milestone8` in the API container.
 
 ### Query + Judgments Authoring
 

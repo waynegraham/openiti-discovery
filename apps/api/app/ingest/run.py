@@ -5,12 +5,11 @@ import re
 import sys
 import csv
 import json
-import time
 import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Tuple, Dict
+from typing import Iterator, List, Optional, Tuple, Dict, Literal
 
 from tqdm import tqdm
 from sqlalchemy import bindparam, text
@@ -18,6 +17,12 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 
 from ..db import get_engine
+from ..language import (
+    UNKNOWN_LANGUAGE,
+    configured_supported_languages,
+    infer_language_from_text,
+    normalize_language_tag,
+)
 from ..settings import settings
 from ..clients.opensearch_client import ensure_write_index_target, get_opensearch
 from ..clients.qdrant_client import get_qdrant
@@ -35,9 +40,16 @@ LOG = logging.getLogger("openiti.ingest")
 
 DEFAULT_TARGET_WORKS = int(os.getenv("INGEST_WORK_LIMIT", "200") or "200")
 DEFAULT_ONLY_PRI = os.getenv("INGEST_ONLY_PRI", "true").lower() in ("1", "true", "yes")
-DEFAULT_LANGS = os.getenv("INGEST_LANGS", "ara").split(",")  # for this runner we expect ara
+DEFAULT_LANGS = [
+    normalize_language_tag(v)
+    for v in os.getenv("INGEST_LANGS", settings.SUPPORTED_LANGUAGES).split(",")
+    if v.strip()
+]
+if not DEFAULT_LANGS:
+    DEFAULT_LANGS = configured_supported_languages()
 CHUNK_TARGET_WORDS = int(os.getenv("CHUNK_TARGET_WORDS", "300") or "300")
 CHUNK_MAX_OVERLAP_WORDS = int(os.getenv("CHUNK_MAX_OVERLAP_WORDS", "0") or "0")
+SKIP_EXISTING = os.getenv("SKIP_EXISTING", "true").lower() in ("1", "true", "yes")
 
 EMBEDDINGS_ENABLED = os.getenv("EMBEDDINGS_ENABLED", "true").lower() in ("1", "true", "yes")
 EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu").lower()
@@ -53,6 +65,41 @@ OS_BULK_BATCH = int(os.getenv("OPENSEARCH_BULK_BATCH", "500") or "500")
 
 # Curated tags (for faceting)
 CURATED_TAGS_PATH = os.getenv("CURATED_TAGS_PATH", "")
+
+INGEST_FLOW_ORDER = ("discovered", "parsed", "indexed_bm25", "embedded", "complete")
+
+
+@dataclass(frozen=True)
+class IngestStateRow:
+    version_id: str
+    status: str
+    last_chunk_index: int | None
+
+
+@dataclass(frozen=True)
+class IngestDecision:
+    action: Literal["process", "resume", "skip_complete"]
+    start_chunk_index: int
+    reason: str
+
+
+@dataclass(frozen=True)
+class SectionBlock:
+    heading_text: str | None
+    heading_path: list[str] | None
+    word_spans: list[tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class PlannedChunk:
+    chunk_index: int
+    heading_text: str | None
+    heading_path: list[str] | None
+    start_char_offset: int
+    end_char_offset: int
+    text_raw: str
+    text_norm: str
+    word_count: int
 
 
 # ---------------------------
@@ -138,6 +185,34 @@ def _version_label(status: str | None) -> str | None:
     return status.upper()
 
 
+def _metadata_is_pri(status: str | None, version_label: str | None, fallback: bool) -> bool:
+    status_norm = (status or "").strip().lower()
+    version_norm = (version_label or "").strip().upper()
+    if status_norm == "pri" or version_norm == "PRI":
+        return True
+    if status_norm == "sec" or version_norm == "ALT":
+        return False
+    return fallback
+
+
+def _metadata_language(row: dict) -> tuple[str, str | None]:
+    candidates = [
+        row.get("language"),
+        row.get("lang"),
+        row.get("lang_code"),
+        row.get("language_code"),
+        row.get("iso_lang"),
+    ]
+    for candidate in candidates:
+        if candidate and str(candidate).strip():
+            return normalize_language_tag(str(candidate)), str(candidate)
+    return UNKNOWN_LANGUAGE, None
+
+
+def _infer_language_from_path(repo_path: str) -> str:
+    return infer_language_from_text(repo_path)
+
+
 def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, dict], dict[str, dict]]:
     csv_path = corpus_root / "OpenITI_metadata_2023-1-8.csv"
     if not csv_path.exists():
@@ -151,6 +226,9 @@ def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, 
         for row in reader:
             local_path = _normalize_repo_path(row.get("local_path") or "")
             version_uri = (row.get("version_uri") or "").strip()
+            lang_from_row, raw_lang = _metadata_language(row)
+            inferred_lang = _infer_language_from_path(local_path or version_uri)
+            normalized_lang = lang_from_row if lang_from_row != UNKNOWN_LANGUAGE else inferred_lang
             tags_raw = [t.strip() for t in (row.get("tags") or "").split(" :: ") if t.strip()]
 
             period_tag, period_label = _extract_period(tags_raw)
@@ -170,6 +248,8 @@ def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, 
                 "book": (row.get("book") or "").strip() or None,
                 "status": (row.get("status") or "").strip() or None,
                 "version_label": _version_label((row.get("status") or "").strip()),
+                "lang": normalized_lang,
+                "lang_raw": raw_lang,
                 "date_ah": date_ah,
                 "date_ce": date_ce,
                 "period_tag": period_tag,
@@ -203,7 +283,7 @@ class DiscoveredText:
     repo_path: str  # path relative to CORPUS_ROOT
     abs_path: Path
     is_pri: bool
-    lang: str  # 'ara' for this runner
+    lang: str  # canonical language tag (ar/en/fa/unknown)
 
 
 def sha256_file(p: Path) -> str:
@@ -300,16 +380,59 @@ def _resolve_local_path(corpus_root: Path, local_path: str) -> tuple[str, Path] 
     return rel, abs_path
 
 
+def _supports_ingest_language(lang: str) -> bool:
+    normalized = normalize_language_tag(lang)
+    return normalized == UNKNOWN_LANGUAGE or normalized in DEFAULT_LANGS
+
+
+def _select_with_min_two_languages(
+    candidates: list[tuple[Path, str, str | None, dict]],
+    *,
+    target_works: int,
+) -> list[tuple[Path, str, str | None, dict]]:
+    if not candidates:
+        return []
+
+    ordered = sorted(candidates, key=lambda t: t[1])
+    if target_works <= 0:
+        return ordered
+
+    by_lang: dict[str, list[tuple[Path, str, str | None, dict]]] = {}
+    for item in ordered:
+        lang = normalize_language_tag(item[3].get("lang"))
+        by_lang.setdefault(lang, []).append(item)
+
+    usable_langs = [lang for lang, items in by_lang.items() if items and lang != UNKNOWN_LANGUAGE]
+    if len(usable_langs) < 2:
+        return ordered[:target_works]
+
+    selected: list[tuple[Path, str, str | None, dict]] = []
+    used_repo_paths: set[str] = set()
+    for lang in usable_langs[:2]:
+        choice = by_lang[lang][0]
+        selected.append(choice)
+        used_repo_paths.add(choice[1])
+
+    for item in ordered:
+        if len(selected) >= target_works:
+            break
+        if item[1] in used_repo_paths:
+            continue
+        selected.append(item)
+        used_repo_paths.add(item[1])
+    return selected
+
+
 def _discover_from_metadata_index(
     corpus_root: Path,
     target_works: int,
     metadata_by_path: dict[str, dict],
 ) -> List[DiscoveredText]:
-    if not metadata_by_path or target_works <= 0:
+    if not metadata_by_path:
         return []
 
-    selected_by_work: dict[tuple[str, str], tuple[Path, str, str | None, int]] = {}
-    all_files: list[tuple[Path, str]] = []
+    selected_by_work: dict[tuple[str, str], tuple[Path, str, str | None, int, dict]] = {}
+    all_files: list[tuple[Path, str, str | None, dict]] = []
 
     for local_path, meta in metadata_by_path.items():
         repo_rel, abs_path = _resolve_local_path(corpus_root, local_path)
@@ -322,6 +445,10 @@ def _discover_from_metadata_index(
         if len(rel_parts) < 3:
             continue
 
+        resolved_lang = normalize_language_tag(meta.get("lang"))
+        if not _supports_ingest_language(resolved_lang):
+            continue
+
         status = (meta.get("status") or "").strip().lower() or None
         work_key = (rel_parts[0], rel_parts[1])
         score = _pri_score(abs_path, status)
@@ -331,21 +458,29 @@ def _discover_from_metadata_index(
                 continue
             prev = selected_by_work.get(work_key)
             if prev is None or score > prev[3] or (score == prev[3] and repo_rel < prev[1]):
-                selected_by_work[work_key] = (abs_path, repo_rel, status, score)
+                selected_by_work[work_key] = (abs_path, repo_rel, status, score, meta)
         else:
-            all_files.append((abs_path, repo_rel))
+            all_files.append((abs_path, repo_rel, status, meta))
 
     if DEFAULT_ONLY_PRI:
-        selected = sorted(selected_by_work.values(), key=lambda t: t[1])[:target_works]
-        files = [(t[0], t[1]) for t in selected]
+        selected = sorted(selected_by_work.values(), key=lambda t: t[1])
+        if target_works > 0:
+            selected = selected[:target_works]
+        files = [(t[0], t[1], t[2], t[4]) for t in selected]
     else:
-        files = all_files[:target_works]
+        files = _select_with_min_two_languages(all_files, target_works=target_works)
 
     discovered: List[DiscoveredText] = []
-    for fp, repo_rel in files:
+    for fp, repo_rel, status, meta in files:
         author_id, work_id, version_id, _ = infer_ids_from_path(corpus_root, fp)
-        if "ara" not in DEFAULT_LANGS:
-            continue
+        metadata_lang = normalize_language_tag(meta.get("lang"))
+        if metadata_lang == UNKNOWN_LANGUAGE:
+            LOG.warning(
+                "Language metadata missing/unmapped for %s (raw=%s). Using unknown.",
+                repo_rel,
+                meta.get("lang_raw"),
+            )
+
         discovered.append(
             DiscoveredText(
                 author_id=author_id,
@@ -353,11 +488,15 @@ def _discover_from_metadata_index(
                 version_id=version_id,
                 repo_path=repo_rel,
                 abs_path=fp,
-                is_pri=("pri" in fp.name.lower()),
-                lang="ara",
+                is_pri=_metadata_is_pri(
+                    status=(status or "") if status else None,
+                    version_label=(meta.get("version_label") or "") if meta else None,
+                    fallback=("pri" in fp.name.lower()),
+                ),
+                lang=metadata_lang,
             )
         )
-        if len(discovered) >= target_works:
+        if target_works > 0 and len(discovered) >= target_works:
             break
     return discovered
 
@@ -369,7 +508,7 @@ def discover_200_pri_arabic(
     metadata_by_path: dict[str, dict] | None = None,
 ) -> List[DiscoveredText]:
     """
-    Discover texts by walking data/ and selecting up to target_works PRI versions in Arabic.
+    Discover texts by walking data/ and selecting up to target_works versions.
     """
     if metadata_by_path:
         discovered = _discover_from_metadata_index(corpus_root, target_works, metadata_by_path)
@@ -406,12 +545,12 @@ def discover_200_pri_arabic(
                 first_by_workdir[workdir] = fp
             if "pri" in fp.name.lower() and workdir not in pri_by_workdir:
                 pri_by_workdir[workdir] = fp
-                if len(pri_by_workdir) >= target_works:
+                if target_works > 0 and len(pri_by_workdir) >= target_works:
                     break
 
     if DEFAULT_ONLY_PRI:
         pri_files = list(pri_by_workdir.values())
-        if len(pri_files) < target_works:
+        if target_works > 0 and len(pri_files) < target_works:
             for workdir, fp in first_by_workdir.items():
                 if workdir in pri_by_workdir:
                     continue
@@ -421,17 +560,39 @@ def discover_200_pri_arabic(
     else:
         pri_files = [f for fs in files_by_workdir.values() for f in fs]
 
+    fallback_candidates: list[tuple[Path, str, bool, str]] = []
     discovered: List[DiscoveredText] = []
     for fp in pri_files:
         author_id, work_id, version_id, repo_rel = infer_ids_from_path(corpus_root, fp)
 
-        # crude Arabic filter: allow only if requested langs include ara
-        lang = "ara"
-        if "ara" not in DEFAULT_LANGS:
+        lang = _infer_language_from_path(repo_rel)
+        if not _supports_ingest_language(lang):
             continue
+        if lang == UNKNOWN_LANGUAGE:
+            LOG.warning("Language metadata missing/unmapped for %s. Using unknown.", repo_rel)
 
         # Mark PRI by filename heuristic or single-file selection
         is_pri = True if (("PRI" in fp.name) or ("pri" in fp.name)) else DEFAULT_ONLY_PRI
+        fallback_candidates.append((fp, repo_rel, is_pri, lang))
+
+    selected_candidates = _select_with_min_two_languages(
+        [
+            (
+                fp,
+                repo_rel,
+                None,
+                {"lang": lang},
+            )
+            for fp, repo_rel, _is_pri, lang in fallback_candidates
+        ],
+        target_works=target_works,
+    )
+    selected_lookup = {repo_rel for _, repo_rel, _, _ in selected_candidates}
+
+    for fp, repo_rel, is_pri, lang in fallback_candidates:
+        if repo_rel not in selected_lookup:
+            continue
+        author_id, work_id, version_id, _ = infer_ids_from_path(corpus_root, fp)
 
         discovered.append(
             DiscoveredText(
@@ -444,7 +605,7 @@ def discover_200_pri_arabic(
                 lang=lang,
             )
         )
-        if len(discovered) >= target_works:
+        if target_works > 0 and len(discovered) >= target_works:
             break
 
     return discovered
@@ -469,6 +630,99 @@ def chunk_words(words: List[str], target: int, overlap: int) -> Iterator[Tuple[i
         yield (chunk_index, i, words[i:j])
         chunk_index += 1
         i += step
+
+
+HEADING_LINE_RE = re.compile(r"^(?P<hashes>#{1,6})\s*(?P<body>.+?)\s*$")
+WORD_RE = re.compile(r"\S+")
+
+
+def _parse_heading_line(line: str) -> tuple[int, str] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("######OpenITI#"):
+        return None
+
+    match = HEADING_LINE_RE.match(stripped)
+    if not match:
+        return None
+
+    level = len(match.group("hashes"))
+    body = match.group("body").strip().lstrip("|").strip()
+    if not body or body.startswith("OpenITI#"):
+        return None
+    return level, body
+
+
+def _build_section_blocks(raw: str) -> list[SectionBlock]:
+    sections: list[SectionBlock] = [SectionBlock(heading_text=None, heading_path=None, word_spans=[])]
+    heading_stack: list[str] = []
+    cursor = 0
+
+    for line in raw.splitlines(keepends=True):
+        line_start = cursor
+        if line.strip().startswith("######OpenITI#"):
+            cursor += len(line)
+            continue
+        heading = _parse_heading_line(line)
+        if heading is not None:
+            level, heading_text = heading
+            if level <= 0:
+                level = 1
+            heading_stack = heading_stack[: level - 1]
+            heading_stack.append(heading_text)
+            sections.append(
+                SectionBlock(
+                    heading_text=heading_text,
+                    heading_path=list(heading_stack),
+                    word_spans=[],
+                )
+            )
+        else:
+            word_spans = list(sections[-1].word_spans)
+            for m in WORD_RE.finditer(line):
+                word_spans.append((line_start + m.start(), line_start + m.end()))
+            sections[-1] = SectionBlock(
+                heading_text=sections[-1].heading_text,
+                heading_path=sections[-1].heading_path,
+                word_spans=word_spans,
+            )
+        cursor += len(line)
+
+    return sections
+
+
+def build_chunk_plan(raw: str, *, target_words: int, overlap_words: int) -> list[PlannedChunk]:
+    sections = _build_section_blocks(raw)
+    chunks: list[PlannedChunk] = []
+    next_chunk_index = 0
+
+    for section in sections:
+        if not section.word_spans:
+            continue
+        section_words = [raw[s:e] for s, e in section.word_spans]
+        for _local_index, start_word, wslice in chunk_words(section_words, target_words, overlap_words):
+            if not wslice:
+                continue
+            end_word = start_word + len(wslice) - 1
+            start_char = section.word_spans[start_word][0]
+            end_char = section.word_spans[end_word][1]
+            text_raw = raw[start_char:end_char]
+            text_norm = normalize_arabic_script(text_raw)
+            if not text_norm:
+                continue
+            chunks.append(
+                PlannedChunk(
+                    chunk_index=next_chunk_index,
+                    heading_text=section.heading_text,
+                    heading_path=section.heading_path,
+                    start_char_offset=start_char,
+                    end_char_offset=end_char,
+                    text_raw=text_raw,
+                    text_norm=text_norm,
+                    word_count=len(wslice),
+                )
+            )
+            next_chunk_index += 1
+    return chunks
 
 
 def extract_heading_context(text: str) -> Tuple[Optional[str], Optional[List[str]]]:
@@ -606,7 +860,103 @@ def upsert_version(
         )
 
 
+def get_version_row(engine: Engine, version_id: str) -> dict | None:
+    sql = text(
+        """
+        SELECT version_id, lang, is_pri, metadata
+        FROM versions
+        WHERE version_id = :version_id
+        """
+    )
+    with engine.begin() as conn:
+        row = conn.execute(sql, {"version_id": version_id}).mappings().first()
+    return dict(row) if row else None
+
+
+def get_ingest_state(engine: Engine, version_id: str) -> IngestStateRow | None:
+    sql = text(
+        """
+        SELECT version_id, status, last_chunk_index
+        FROM ingest_state
+        WHERE version_id = :version_id
+        """
+    )
+    with engine.begin() as conn:
+        row = conn.execute(sql, {"version_id": version_id}).mappings().first()
+    if not row:
+        return None
+    return IngestStateRow(
+        version_id=row["version_id"],
+        status=row["status"],
+        last_chunk_index=row["last_chunk_index"],
+    )
+
+
+def _flow_rank(status: str) -> int:
+    if status not in INGEST_FLOW_ORDER:
+        return -1
+    return INGEST_FLOW_ORDER.index(status)
+
+
+def is_valid_ingest_transition(current_status: str | None, next_status: str) -> bool:
+    if not current_status:
+        return next_status == "discovered"
+    if current_status == next_status:
+        return True
+    if current_status == "failed":
+        return next_status in ("discovered", "failed")
+    if next_status == "failed":
+        return True
+    if current_status == "complete":
+        return next_status in ("complete", "discovered")
+    cur_rank = _flow_rank(current_status)
+    next_rank = _flow_rank(next_status)
+    return cur_rank >= 0 and next_rank >= 0 and next_rank >= cur_rank
+
+
+def decide_ingest_behavior(
+    state: IngestStateRow | None,
+    *,
+    skip_existing: bool,
+    embeddings_enabled: bool,
+) -> IngestDecision:
+    if state is None:
+        return IngestDecision(action="process", start_chunk_index=0, reason="no_checkpoint")
+    if state.status == "complete":
+        if skip_existing:
+            return IngestDecision(action="skip_complete", start_chunk_index=0, reason="already_complete")
+        return IngestDecision(action="process", start_chunk_index=0, reason="forced_reprocess_complete")
+
+    if not skip_existing:
+        return IngestDecision(action="process", start_chunk_index=0, reason=f"forced_reprocess_{state.status}")
+
+    if state.status == "embedded":
+        if state.last_chunk_index is None:
+            return IngestDecision(action="process", start_chunk_index=0, reason="embedded_missing_last_chunk")
+        return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index + 1, reason="resume_from_embedded")
+
+    if state.status == "indexed_bm25":
+        if state.last_chunk_index is None:
+            return IngestDecision(action="process", start_chunk_index=0, reason="indexed_missing_last_chunk")
+        if embeddings_enabled:
+            return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index, reason="resume_replay_last_for_embedding")
+        return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index + 1, reason="resume_from_indexed_bm25")
+
+    if state.status == "failed" and state.last_chunk_index is not None:
+        if embeddings_enabled:
+            return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index, reason="resume_failed_replay_last")
+        return IngestDecision(action="resume", start_chunk_index=state.last_chunk_index + 1, reason="resume_failed_from_checkpoint")
+
+    return IngestDecision(action="process", start_chunk_index=0, reason=f"restart_from_{state.status}")
+
+
 def set_ingest_state(engine: Engine, version_id: str, status: str, *, last_chunk_index: int | None = None, error_message: str | None = None) -> None:
+    existing = get_ingest_state(engine, version_id)
+    if not is_valid_ingest_transition(existing.status if existing else None, status):
+        raise RuntimeError(
+            f"Invalid ingest_state transition for {version_id}: "
+            f"{existing.status if existing else '<none>'} -> {status}"
+        )
     sql = text(
         """
         INSERT INTO ingest_state(version_id, status, last_chunk_index, attempt_count)
@@ -616,6 +966,10 @@ def set_ingest_state(engine: Engine, version_id: str, status: str, *, last_chunk
               last_chunk_index = EXCLUDED.last_chunk_index,
               last_step_at = now(),
               error_message = :error_message,
+              attempt_count = CASE
+                  WHEN EXCLUDED.status = 'discovered' THEN ingest_state.attempt_count + 1
+                  ELSE ingest_state.attempt_count
+              END,
               updated_at = now()
         """
     )
@@ -660,6 +1014,10 @@ def upsert_chunks_batch(engine: Engine, rows: List[dict]) -> None:
               text_norm = EXCLUDED.text_norm,
               heading_text = EXCLUDED.heading_text,
               heading_path = EXCLUDED.heading_path,
+              start_char_offset = EXCLUDED.start_char_offset,
+              end_char_offset = EXCLUDED.end_char_offset,
+              word_count = EXCLUDED.word_count,
+              token_count = EXCLUDED.token_count,
               prev_chunk_id = EXCLUDED.prev_chunk_id,
               next_chunk_id = EXCLUDED.next_chunk_id,
               updated_at = now()
@@ -853,6 +1211,7 @@ def run() -> None:
 
     LOG.info("Discovered %d texts (target=%d). only_pri=%s langs=%s",
              len(texts), DEFAULT_TARGET_WORKS, DEFAULT_ONLY_PRI, DEFAULT_LANGS)
+    LOG.info("Resumable ingest mode: SKIP_EXISTING=%s", SKIP_EXISTING)
 
     model: SentenceTransformer | None = None
     if EMBEDDINGS_ENABLED:
@@ -860,10 +1219,43 @@ def run() -> None:
         model = SentenceTransformer(EMBEDDING_MODEL_ID, device=resolved_device)
         ensure_qdrant_collection(model, settings.QDRANT_COLLECTION)
 
+    run_stats = {
+        "processed": 0,
+        "resumed": 0,
+        "skipped_complete": 0,
+        "failed": 0,
+        "reprocessed": 0,
+    }
+
     # Process each text end-to-end
     for t in tqdm(texts, desc="Ingest versions", unit="version"):
         try:
             meta = metadata_by_path.get(t.repo_path) or metadata_by_version.get(t.abs_path.stem)
+            db_version = get_version_row(engine, t.version_id)
+
+            source_lang = normalize_language_tag((meta or {}).get("lang"))
+            db_lang = normalize_language_tag((db_version or {}).get("lang"))
+            effective_lang = source_lang if source_lang != UNKNOWN_LANGUAGE else db_lang
+            if effective_lang == UNKNOWN_LANGUAGE:
+                effective_lang = normalize_language_tag(t.lang)
+            if effective_lang == UNKNOWN_LANGUAGE:
+                LOG.warning("Language metadata missing/unmapped for %s. Using unknown.", t.repo_path)
+
+            db_is_pri = bool((db_version or {}).get("is_pri", False))
+            effective_is_pri = _metadata_is_pri(
+                status=(meta.get("status") or "") if meta else None,
+                version_label=(meta.get("version_label") or "") if meta else None,
+                fallback=db_is_pri if db_version is not None else bool(t.is_pri),
+            )
+            t_effective = DiscoveredText(
+                author_id=t.author_id,
+                work_id=t.work_id,
+                version_id=t.version_id,
+                repo_path=t.repo_path,
+                abs_path=t.abs_path,
+                is_pri=effective_is_pri,
+                lang=effective_lang,
+            )
 
             author_name_lat = None
             work_title_ar = None
@@ -914,8 +1306,40 @@ def run() -> None:
                 metadata=work_meta,
             )
             # Ensure the version exists before any ingest_state updates (FK constraint).
-            upsert_version(engine, t, checksum=None, word_count=None, char_count=None, metadata=version_meta)
-            set_ingest_state(engine, t.version_id, "discovered")
+            upsert_version(engine, t_effective, checksum=None, word_count=None, char_count=None, metadata=version_meta)
+            existing_state = get_ingest_state(engine, t_effective.version_id)
+            decision = decide_ingest_behavior(
+                existing_state,
+                skip_existing=SKIP_EXISTING,
+                embeddings_enabled=EMBEDDINGS_ENABLED,
+            )
+
+            if decision.action == "skip_complete":
+                run_stats["skipped_complete"] += 1
+                LOG.info("Skipping version_id=%s (%s)", t_effective.version_id, decision.reason)
+                continue
+
+            if decision.action == "resume":
+                run_stats["resumed"] += 1
+            else:
+                run_stats["processed"] += 1
+                if existing_state is not None:
+                    run_stats["reprocessed"] += 1
+
+            if decision.start_chunk_index == 0 or (existing_state is not None and existing_state.status == "failed"):
+                set_ingest_state(engine, t.version_id, "discovered")
+            else:
+                LOG.info(
+                    "Resuming version_id=%s from chunk_index=%d (%s)",
+                    t_effective.version_id,
+                    decision.start_chunk_index,
+                    decision.reason,
+                )
+            checkpoint_bm25 = not (
+                decision.action == "resume"
+                and existing_state is not None
+                and existing_state.status == "embedded"
+            )
 
             raw = read_text_file(t.abs_path)
             checksum = sha256_file(t.abs_path)
@@ -927,20 +1351,21 @@ def run() -> None:
 
             upsert_version(
                 engine,
-                t,
+                t_effective,
                 checksum=checksum,
                 word_count=word_count,
                 char_count=char_count,
                 metadata=version_meta,
             )
-            set_ingest_state(engine, t.version_id, "parsed")
+            if decision.start_chunk_index == 0:
+                set_ingest_state(engine, t.version_id, "parsed")
 
-            heading_text, heading_path = extract_heading_context(raw)
-
-            # normalize + chunk
-            norm = normalize_arabic_script(raw)
-            words = norm.split(" ") if norm else []
-            if not words:
+            chunk_plan = build_chunk_plan(
+                raw,
+                target_words=CHUNK_TARGET_WORDS,
+                overlap_words=CHUNK_MAX_OVERLAP_WORDS,
+            )
+            if not chunk_plan:
                 set_ingest_state(engine, t.version_id, "failed", error_message="empty text after normalization")
                 continue
 
@@ -952,25 +1377,24 @@ def run() -> None:
             # Create chunk rows in memory, then batch insert/index
             chunks_for_vectors: List[Tuple[str, str, dict]] = []  # (chunk_id, text_norm, payload)
 
-            for chunk_index, start_word, wslice in chunk_words(words, CHUNK_TARGET_WORDS, CHUNK_MAX_OVERLAP_WORDS):
-                chunk_id = f"{t.version_id}::{chunk_index}"
-                text_norm = " ".join(wslice).strip()
-                # for display, take a slice from raw by approximate proportion (fallback)
-                text_raw = text_norm  # MVP: later replace with true raw slicing
+            for planned_chunk in chunk_plan:
+                if planned_chunk.chunk_index < decision.start_chunk_index:
+                    continue
+                chunk_id = f"{t.version_id}::{planned_chunk.chunk_index}"
 
                 row = {
                     "chunk_id": chunk_id,
                     "version_id": t.version_id,
                     "work_id": t.work_id,
                     "author_id": t.author_id,
-                    "chunk_index": chunk_index,
-                    "heading_text": heading_text,
-                    "heading_path": heading_path,
-                    "start_char_offset": None,
-                    "end_char_offset": None,
-                    "text_raw": text_raw,
-                    "text_norm": text_norm,
-                    "word_count": len(wslice),
+                    "chunk_index": planned_chunk.chunk_index,
+                    "heading_text": planned_chunk.heading_text,
+                    "heading_path": planned_chunk.heading_path,
+                    "start_char_offset": planned_chunk.start_char_offset,
+                    "end_char_offset": planned_chunk.end_char_offset,
+                    "text_raw": planned_chunk.text_raw,
+                    "text_norm": planned_chunk.text_norm,
+                    "word_count": planned_chunk.word_count,
                     "token_count": None,
                     "prev_chunk_id": None,
                     "next_chunk_id": None,
@@ -985,10 +1409,10 @@ def run() -> None:
                         "work_id": t.work_id,
                         "version_id": t.version_id,
                         "author_id": t.author_id,
-                        "lang": t.lang,
-                        "is_pri": t.is_pri,
+                        "lang": t_effective.lang,
+                        "is_pri": t_effective.is_pri,
                         "title": None,
-                        "content": text_norm,
+                        "content": planned_chunk.text_norm,
                         "author_name_ar": os_meta.get("author_ar"),
                         "author_name_lat": os_author_name_lat,
                         "work_title_ar": os_meta.get("work_title_ar"),
@@ -1007,17 +1431,18 @@ def run() -> None:
                 if EMBEDDINGS_ENABLED and model is not None:
                     payload = build_vector_payload(
                         chunk_id=chunk_id,
-                        chunk_index=chunk_index,
-                        t=t,
+                        chunk_index=planned_chunk.chunk_index,
+                        t=t_effective,
                         meta=os_meta,
                     )
-                    chunks_for_vectors.append((chunk_id, text_norm, payload))
+                    chunks_for_vectors.append((chunk_id, planned_chunk.text_norm, payload))
 
                 # batch flush
                 if len(chunk_rows) >= OS_BULK_BATCH:
                     upsert_chunks_batch(engine, chunk_rows)
                     os_bulk_index(os_docs)
-                    set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
+                    if checkpoint_bm25:
+                        set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
 
                     if EMBEDDINGS_ENABLED and model is not None and chunks_for_vectors:
                         _embed_and_upsert(model, chunks_for_vectors)
@@ -1031,7 +1456,8 @@ def run() -> None:
             if chunk_rows:
                 upsert_chunks_batch(engine, chunk_rows)
                 os_bulk_index(os_docs)
-                set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
+                if checkpoint_bm25:
+                    set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
 
                 if EMBEDDINGS_ENABLED and model is not None and chunks_for_vectors:
                     _embed_and_upsert(model, chunks_for_vectors)
@@ -1044,8 +1470,16 @@ def run() -> None:
         except Exception as e:
             LOG.exception("Failed ingest for version_id=%s path=%s", t.version_id, t.repo_path)
             set_ingest_state(engine, t.version_id, "failed", error_message=str(e))
+            run_stats["failed"] += 1
 
-    LOG.info("Ingest run complete.")
+    LOG.info(
+        "Ingest run complete. processed=%d resumed=%d skipped_complete=%d reprocessed=%d failed=%d",
+        run_stats["processed"],
+        run_stats["resumed"],
+        run_stats["skipped_complete"],
+        run_stats["reprocessed"],
+        run_stats["failed"],
+    )
 
 
 def _embed_and_upsert(model: SentenceTransformer, chunks_for_vectors: List[Tuple[str, str, dict]]) -> None:

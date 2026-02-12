@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "config": "hybrid_ck100_rrf60",
+    "size": 20,
+    "page_size": 20,
+    "pri_only": true,
+    "langs": [
+      "ar"
+    ],
+    "generated_at_epoch": 1770597733.080081,
+    "query_latencies_ms": [
+      290.4761809986667,
+      277.5175470014801,
+      278.7882709999394,
+      304.1108420002274,
+      307.69359199985047
+    ],
+    "effective_mode_counts": {
+      "hybrid": 5
+    },
+    "warnings_seen": []
+  },
+  "results": []
+}

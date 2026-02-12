@@ -1,40 +1,45 @@
 # Updates
 
 1. Migrate DB `docker compose exec api alembic upgrade head`
-2. Create the index (`curl -X PUT "http://localhost:9200/openiti_chunks_v1"`)
+2. Create the index (`curl -X PUT "http://localhost:9200/openiti_chunks_v2"`)
 2. Ensure OpenSearch index alias exists (`curl -X GET http://localhost:9200/_alias/openiti_chunks`)
 3. Run ingest (200 works, PRI, Arabic)
 
+```bash
 docker compose --profile ingest run --rm ingest
+```
 
+```bash
 docker compose --profile ingest run --rm \
-  -e INGEST_WORK_LIMIT=500 \
+  -e INGEST_WORK_LIMIT=200 \
   -e EMBEDDINGS_ENABLED=true \
   -e INGEST_MODE=subset \
   -e INGEST_ONLY_PRI=true  \
   -e EMBEDDING_DEVICE=cuda \
   ingest
+```
 
-
+```bash
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm ingest_cuda
+```
 
-
-
+```bash
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm \
   -e INGEST_MODE=subset \
-  -e INGEST_WORK_LIMIT=200 \
+  -e INGEST_WORK_LIMIT=20000 \
   -e INGEST_ONLY_PRI=true \
   -e INGEST_LANGS=ara \
   -e EMBEDDINGS_ENABLED=true \
   -e EMBEDDING_DEVICE=cuda \
   ingest_cuda
+```
 
 ## PowerShell
 
-```
+```powershell
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm `
    -e INGEST_MODE=subset `
-   -e INGEST_WORK_LIMIT=200 `
+   -e INGEST_WORK_LIMIT=20000 `
    -e INGEST_ONLY_PRI=true `
    -e INGEST_LANGS=ara `
    -e EMBEDDINGS_ENABLED=true `
@@ -44,34 +49,48 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run
 
 ## Checks
 
-# status counts
+### status counts
+```bash
 docker compose exec -T postgres psql -U openiti -d openiti \
   -c "select status, count(*) from ingest_state group by status order by count(*) desc;"
+```
 
-# recent updates (if updated_at exists)
+### recent updates (if updated_at exists)
+
+```bash
 docker compose exec -T postgres psql -U openiti -d openiti \
   -c "select version_id, status, last_chunk_index, updated_at from ingest_state order by updated_at desc limit 10;"
+```
 
-# basic row counts
+### basic row counts
+
+```bash
 docker compose exec -T postgres psql -U openiti -d openiti \
   -c "select 'authors' as table, count(*) from authors
       union all select 'works', count(*) from works
       union all select 'versions', count(*) from versions
       union all select 'chunks', count(*) from chunks;"
-
+```
 ## OpenSearch
 
-# 1) Apply template
+### 1) Apply template
+
+```bash
 curl -X PUT http://localhost:9200/_index_template/openiti_chunks_template_v1 \
   -H "Content-Type: application/json" \
   -d @opensearch/templates/openiti_chunks_template.json
+```
 
-# 2) Create new index (version bump)
+### 2) Create new index (version bump)
+
+```bash
 curl -X PUT http://localhost:9200/openiti_chunks_v2
+```
 
-# 3) Set alias write target
+### 3) Set alias write target
+
+```bash
 curl -X POST http://localhost:9200/_aliases \
   -H "Content-Type: application/json" \
   -d '{"actions":[{"add":{"index":"openiti_chunks_v2","alias":"openiti_chunks","is_write_index":true}}]}'
-
-
+```

@@ -11,17 +11,23 @@ from .clients.opensearch_client import (
 from .clients.qdrant_client import ping_qdrant, vector_count, vector_search
 from .db import get_engine, ping_db
 from .embedding_service import embedding_trace, encode_texts
+from .language import configured_supported_languages, normalize_language_values
 from .repos.chunks import get_chunk_with_neighbors
+from .repos.chunks import resolve_chunk_for_version
+from .repos.works import get_work, list_work_versions
 from .runtime_config import facet_labels, search_runtime
 from .sanitize import sanitize_highlight_html
 from .schemas import (
     ChunkResponse,
+    ChunkResolveResponse,
     EmbedRequest,
     EmbedResponse,
     FacetBucket,
     HealthResponse,
     SearchHit,
     SearchResponse,
+    WorkResponse,
+    WorkVersionResponse,
 )
 from .settings import settings
 
@@ -52,6 +58,13 @@ def _normalize_version_values(values: list[str] | None) -> list[str] | None:
         else:
             out.append(v.upper())
     return out or None
+
+
+def _preferred_langs(locale: str | None, query_langs: list[str] | None) -> list[str]:
+    # Milestone 7 contract: deterministic ordering comes from configured language order.
+    _ = locale
+    _ = query_langs
+    return configured_supported_languages()
 
 
 def _search_cfg() -> dict:
@@ -150,6 +163,65 @@ def get_chunk(chunk_id: str) -> ChunkResponse:
     )
 
 
+@app.get("/works/{work_id}", response_model=WorkResponse)
+def get_work_detail(work_id: str) -> WorkResponse:
+    eng = get_engine()
+    row = get_work(eng, work_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="work not found")
+    return WorkResponse(**row)
+
+
+@app.get("/works/{work_id}/versions", response_model=list[WorkVersionResponse])
+def get_versions_for_work(
+    work_id: str,
+    locale: str | None = Query(None, description="UI locale (e.g. en, ar)"),
+    preferred_langs: str | None = Query(None, description="Comma-separated preferred langs"),
+) -> list[WorkVersionResponse]:
+    eng = get_engine()
+    work_row = get_work(eng, work_id)
+    if not work_row:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    ordered_langs = _preferred_langs(
+        locale,
+        normalize_language_values(_split_csv(preferred_langs)),
+    )
+    rows = list_work_versions(eng, work_id, ordered_langs)
+    return [WorkVersionResponse(**r) for r in rows]
+
+
+@app.get(
+    "/works/{work_id}/versions/{version_id}/chunks/resolve",
+    response_model=ChunkResolveResponse,
+)
+def resolve_version_chunk(
+    work_id: str,
+    version_id: str,
+    target_chunk_index: int = Query(..., ge=0),
+) -> ChunkResolveResponse:
+    eng = get_engine()
+    work_row = get_work(eng, work_id)
+    if not work_row:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    versions = list_work_versions(eng, work_id, [])
+    if not any(v["version_id"] == version_id for v in versions):
+        raise HTTPException(status_code=404, detail="version not found for work")
+
+    row = resolve_chunk_for_version(eng, work_id, version_id, target_chunk_index)
+    if not row:
+        raise HTTPException(status_code=404, detail="no chunk at or below target_chunk_index")
+
+    return ChunkResolveResponse(
+        work_id=work_id,
+        version_id=version_id,
+        requested_chunk_index=target_chunk_index,
+        resolved_chunk_id=row["chunk_id"],
+        resolved_chunk_index=row["chunk_index"],
+    )
+
+
 @app.post("/embed", response_model=EmbedResponse)
 def embed(payload: EmbedRequest) -> EmbedResponse:
     texts = payload.texts or []
@@ -179,7 +251,7 @@ def search(
     mode: str = Query("bm25", pattern="^(bm25|vector|hybrid)$"),
     size: int = Query(settings.DEFAULT_SIZE, ge=1, le=settings.MAX_SIZE),
     page: int = Query(1, ge=1),
-    langs: str | None = Query(None, description="Comma-separated: ara,fas,ota"),
+    langs: str | None = Query(None, description="Comma-separated language codes (e.g. ar,en,fa)"),
     pri_only: bool = Query(settings.DEFAULT_PRI_ONLY),
     period: str | None = Query(None),
     region: str | None = Query(None),
@@ -196,7 +268,7 @@ def search(
 
     trace = embedding_trace()
 
-    langs_list = _split_csv(langs)
+    langs_list = normalize_language_values(_split_csv(langs))
     period_list = _split_csv(period)
     region_list = _split_csv(region)
     tags_list = _split_csv(tags)

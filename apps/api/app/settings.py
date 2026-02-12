@@ -23,7 +23,9 @@ class Settings(BaseSettings):
 
     # Search behavior
     DEFAULT_SIZE: int = int(_search_cfg.get("default_page_size", 20))
-    DEFAULT_PRI_ONLY: bool = True
+    DEFAULT_PRI_ONLY: bool = False
+    SUPPORTED_LANGUAGES: str = "ar,en"
+    LANGUAGE_ALIASES_FILE: str = "config/language_aliases.yml"
 
     # Basic guardrails
     MAX_SIZE: int = int(_search_cfg.get("max_page_size", 100))

@@ -1,0 +1,13 @@
+config,sample_count,avg_ms,p50_ms,p95_ms,classification,page_size,effective_mode_counts
+hybrid_ck100_rrf30,5,1711.38,292.29,5977.37,Poor,20,"{""hybrid"": 5}"
+hybrid_ck100_rrf60,5,291.72,290.48,306.98,Poor,20,"{""hybrid"": 5}"
+hybrid_ck100_rrf90,5,289.77,284.57,303.23,Poor,20,"{""hybrid"": 5}"
+hybrid_ck200_rrf30,5,293.39,299.95,303.22,Poor,20,"{""hybrid"": 5}"
+hybrid_ck200_rrf60,5,312.86,308.79,327.50,Poor,20,"{""hybrid"": 5}"
+hybrid_ck200_rrf90,5,309.11,305.29,328.23,Poor,20,"{""hybrid"": 5}"
+hybrid_ck400_rrf30,5,301.62,297.01,318.26,Poor,20,"{""hybrid"": 5}"
+hybrid_ck400_rrf60,5,322.68,318.42,338.12,Poor,20,"{""hybrid"": 5}"
+hybrid_ck400_rrf90,5,334.35,314.82,395.49,Poor,20,"{""hybrid"": 5}"
+mode_bm25,5,9.30,7.30,15.46,Excellent,20,"{""bm25"": 5}"
+mode_hybrid,5,283.16,276.57,299.27,Acceptable,20,"{""hybrid"": 5}"
+mode_vector,5,1652.76,269.31,5789.20,Poor,20,"{""vector"": 5}"

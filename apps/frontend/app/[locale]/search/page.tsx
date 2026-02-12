@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
+import { getApiBase } from "../../../lib/api";
 import { cn } from "../../../lib/utils";
 
 type FacetBucket = {
@@ -47,14 +48,6 @@ const MODE_OPTIONS = [
   { value: "hybrid", label: "Hybrid", disabled: false },
 ];
 
-function getApiBase() {
-  return (
-    process.env.API_INTERNAL_URL ||
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    "http://localhost:8000"
-  );
-}
-
 function buildSearchUrl(base: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params);
   return `${base.replace(/\/$/, "")}/search?${qs.toString()}`;
@@ -71,6 +64,14 @@ function parseCsvParam(value?: string) {
     .split(",")
     .map((v) => v.trim())
     .filter(Boolean);
+}
+
+function normalizeId(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function toCsvParam(values: string[]) {
@@ -292,7 +293,6 @@ export default async function SearchPage({
               defaultValue={query}
               className="h-12 flex-1 rounded-full bg-background/80 px-5 text-base"
             />
-            <input type="hidden" name="mode" value={requestedMode} />
             {selectedPeriod.length ? (
               <input type="hidden" name="period" value={toCsvParam(selectedPeriod)} />
             ) : null}
@@ -570,11 +570,12 @@ export default async function SearchPage({
               <div className="space-y-4">
                 {results.map((result) => {
                   const src = (result.source || {}) as Record<string, unknown>;
+                  const normalizedChunkId = normalizeId(result.chunk_id);
                   const title =
                     (src.work_title_lat as string) ||
                     (src.work_title_ar as string) ||
                     (src.title as string) ||
-                    result.chunk_id;
+                    normalizedChunkId;
                   const author =
                     (src.author_name_lat as string) ||
                     (src.author_name_ar as string) ||
@@ -594,6 +595,7 @@ export default async function SearchPage({
                   const tags = Array.isArray(src.tags) ? (src.tags as string[]) : [];
                   const version = (src.version_label as string) || "";
                   const type = (src.type as string) || "Passage";
+                  const workId = normalizeId((src.work_id as string) || "");
                   const snippet = highlightSnippet(result);
 
                   return (
@@ -636,17 +638,26 @@ export default async function SearchPage({
                           ))}
                         </div>
                         <div className="flex flex-wrap gap-3 text-sm">
-                          <button className={cn(buttonVariants(), "rounded-full")}>
+                          <a
+                            href={`/${locale}/passage/${encodeURIComponent(normalizedChunkId)}`}
+                            className={cn(buttonVariants(), "rounded-full")}
+                          >
                             {t("openPassage")}
-                          </button>
-                          <button
+                          </a>
+                          <a
+                            href={
+                              workId
+                                ? `/${locale}/work/${encodeURIComponent(workId)}`
+                                : "#"
+                            }
                             className={cn(
                               buttonVariants({ variant: "outline" }),
-                              "rounded-full"
+                              "rounded-full",
+                              !workId && "pointer-events-none opacity-50"
                             )}
                           >
                             {t("viewWork")}
-                          </button>
+                          </a>
                         </div>
                       </CardContent>
                     </Card>

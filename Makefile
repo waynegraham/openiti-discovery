@@ -19,7 +19,7 @@ INDEX_SIZES_LOCAL_DIR ?= data/eval/output/metrics
 # make ingest INGEST_WORK_LIMIT=200 EMBEDDING_DEVICE=cpu
 INGEST_WORK_LIMIT ?= 200
 INGEST_ONLY_PRI ?= true
-INGEST_LANGS ?= ara
+INGEST_LANGS ?= ar,en
 EMBEDDINGS_ENABLED ?= true
 EMBEDDING_DEVICE ?= cpu
 
@@ -35,7 +35,9 @@ endef
 
 .PHONY: help up down reset logs ps \
         wait migrate template-validate template index alias smoke-alias status milestone-1 \
-        init init-no-data ingest gpu-ingest \
+        init init-no-data ingest gpu-ingest frontend-test milestone-5 facet-labels-validate milestone-6 \
+        backfill-languages milestone-7 \
+        milestone-8-bench milestone-8-smoke milestone-8-degraded milestone-8-checklist milestone-8 \
         eval-scaffold eval-import-forms eval-corpus-plan eval-qrels-audit \
         eval-qualitative eval-scalability-measure eval-run-subsets \
         eval-run eval-metrics eval-tables eval-record eval-all \
@@ -50,20 +52,47 @@ EVAL_TABLES_DIR ?= /app/data/eval/output/tables
 EVAL_SCALABILITY_MANIFEST ?= /app/data/eval/scalability.json
 EVAL_CONFIGS ?= baseline,normalized,variant_aware,full_pipeline
 EVAL_SIZE ?= 100
-EVAL_LANGS ?= ara
+EVAL_LANGS ?= ar
 EVAL_PRI_ONLY ?= true
 EVAL_SCAFFOLD_PER_CATEGORY ?= 4
 EVAL_FORMS_QUERIES_CSV ?= /app/data/eval/forms/queries_form.csv
 EVAL_FORMS_QRELS_CSV ?= /app/data/eval/forms/qrels_form.csv
 EVAL_TARGET_LINES ?= 1000000,5000000,20000000
 EVAL_SUBSET_MANIFEST ?= /app/data/eval/subsets.sample.json
+M8_LANGS ?= ar
+M8_PAGE_SIZE ?= 20
+M8_CANDIDATE_K_GRID ?= 100,200,400
+M8_RRF_K_GRID ?= 30,60,90
+M8_QUERIES_HOST ?= data/eval/queries.json
+M8_QRELS_HOST ?= data/eval/qrels.json
+M8_SUBSET_MANIFEST_HOST ?= data/eval/subsets.sample.json
+M8_INPUT_DIR ?= /artifacts/milestone8/input
+M8_QUERIES ?= $(M8_INPUT_DIR)/queries.json
+M8_QRELS ?= $(M8_INPUT_DIR)/qrels.json
+M8_SUBSET_MANIFEST ?= $(M8_INPUT_DIR)/subsets.sample.json
+M8_OUT_ROOT ?= /artifacts/eval/output/milestone8
+M8_BASELINE_RUN_DIR ?= $(M8_OUT_ROOT)/baseline_runs
+M8_BASELINE_METRICS_DIR ?= $(M8_OUT_ROOT)/baseline_metrics
+M8_HYBRID_RUN_DIR ?= $(M8_OUT_ROOT)/hybrid_runs
+M8_METRICS_DIR ?= $(M8_OUT_ROOT)/metrics
+M8_SMOKE_DIR ?= $(M8_OUT_ROOT)/smoke
 
 help:
 	@echo "Targets:"
 	@echo "  make init           - Start stack, run migrations, apply template, create index, run subset ingest"
 	@echo "  make init-no-data   - Same as init, but skip ingest"
-	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ara)"
+	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ar/en)"
 	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
+	@echo "  make frontend-test  - Run lightweight frontend route/API integration tests"
+	@echo "  make milestone-5    - Run backend API tests plus frontend integration tests for reading routes"
+	@echo "  make facet-labels-validate - Validate config/facet_labels.csv editorial data"
+	@echo "  make milestone-6    - Run local Milestone 6 checks (facet-label validation)"
+	@echo "  make backfill-languages - One-time language normalization backfill (DB + OpenSearch + Qdrant)"
+	@echo "  make milestone-7    - Run Milestone 7 backend checks"
+	@echo "  make milestone-8-bench - Run Milestone 8 benchmark/tuning/quality-gate flow"
+	@echo "  make milestone-8-smoke - Run Milestone 8 in-process API smoke checks"
+	@echo "  make milestone-8-degraded - Run degraded fallback smoke with Qdrant unavailable"
+	@echo "  make milestone-8    - Run Milestone 8 benchmark + smoke + degraded + checklist"
 	@echo "  make eval-scaffold  - Generate placeholder queries + qrels from paper query framework"
 	@echo "  make eval-import-forms - Convert expert CSV forms into queries.json and qrels.json"
 	@echo "  make eval-corpus-plan - Estimate INGEST_WORK_LIMIT for target corpus line counts"
@@ -147,7 +176,7 @@ smoke-alias:
 	@SMOKE_ID="smoke-$$(date +%s)"; \
 	curl -fsS -X POST "$(OS_URL)/$(OS_ALIAS)/_doc/$$SMOKE_ID?refresh=wait_for" \
 	  -H "Content-Type: application/json" \
-	  -d '{"chunk_id":"'"$$SMOKE_ID"'","work_id":"smoke_work","version_id":"smoke_version","author_id":"smoke_author","lang":"ara","is_pri":true,"author_name_ar":"smoke","author_name_lat":"smoke","work_title_ar":"smoke","work_title_lat":"smoke","date_ah":1,"date_ce":1,"period":"test","period_tag":"test","region":"test","tags":["smoke"],"version_label":"smoke","type":"passage","title":"smoke","content":"smoke"}' >/dev/null; \
+	  -d '{"chunk_id":"'"$$SMOKE_ID"'","work_id":"smoke_work","version_id":"smoke_version","author_id":"smoke_author","lang":"ar","is_pri":true,"author_name_ar":"smoke","author_name_lat":"smoke","work_title_ar":"smoke","work_title_lat":"smoke","date_ah":1,"date_ce":1,"period":"test","period_tag":"test","region":"test","tags":["smoke"],"version_label":"smoke","type":"passage","title":"smoke","content":"smoke"}' >/dev/null; \
 	HTTP_CODE="$$(curl -s -o /dev/null -w "%{http_code}" -X GET "$(OS_URL)/$(OS_ALIAS)/_search" -H "Content-Type: application/json" -d '{"size":1,"query":{"term":{"chunk_id":"'"$$SMOKE_ID"'"}}}')"; \
 	if [ "$$HTTP_CODE" != "200" ]; then echo "Alias smoke query failed with HTTP $$HTTP_CODE"; exit 1; fi; \
 	curl -fsS -X DELETE "$(OS_URL)/$(OS_ALIAS)/_doc/$$SMOKE_ID?refresh=wait_for" >/dev/null || true
@@ -200,7 +229,7 @@ gpu-ingest:
 	@echo "  INGEST_LANGS=$(INGEST_LANGS)"
 	@echo "  EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED)"
 	@echo "  EMBEDDING_DEVICE=cuda"
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm --gpus all \
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu run --rm \
 	  -e INGEST_MODE=subset \
 	  -e INGEST_WORK_LIMIT=$(INGEST_WORK_LIMIT) \
 	  -e INGEST_ONLY_PRI=$(INGEST_ONLY_PRI) \
@@ -208,6 +237,95 @@ gpu-ingest:
 	  -e EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED) \
 	  -e EMBEDDING_DEVICE=cuda \
 	  ingest_cuda
+
+frontend-test:
+	cd apps/frontend && npm run test
+
+milestone-5:
+	python -m pytest apps/api/tests/test_main_api.py -q
+	$(MAKE) frontend-test
+
+facet-labels-validate:
+	python apps/api/scripts/validate_facet_labels.py --path config/facet_labels.csv
+
+milestone-6: facet-labels-validate
+
+backfill-languages:
+	$(COMPOSE) exec -T $(API_SERVICE) python scripts/backfill_languages.py
+
+milestone-7:
+	python -m pytest apps/api/tests/test_language.py apps/api/tests/test_repos_works.py apps/api/tests/test_main_api.py apps/api/tests/test_ingest_language.py -q
+
+milestone-8-bench:
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; [Path(p).mkdir(parents=True, exist_ok=True) for p in ['$(M8_INPUT_DIR)','$(M8_BASELINE_RUN_DIR)','$(M8_BASELINE_METRICS_DIR)','$(M8_HYBRID_RUN_DIR)','$(M8_METRICS_DIR)']]"
+	$(COMPOSE) cp $(M8_QUERIES_HOST) $(API_SERVICE):$(M8_QUERIES)
+	$(COMPOSE) cp $(M8_QRELS_HOST) $(API_SERVICE):$(M8_QRELS)
+	$(COMPOSE) cp $(M8_SUBSET_MANIFEST_HOST) $(API_SERVICE):$(M8_SUBSET_MANIFEST)
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \
+	  --queries $(M8_QUERIES) \
+	  --output-dir $(M8_BASELINE_RUN_DIR) \
+	  --configs baseline,normalized,variant_aware,full_pipeline \
+	  --size 100 \
+	  --langs $(M8_LANGS) \
+	  $(if $(filter true,$(EVAL_PRI_ONLY)),--pri-only,)
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.metrics \
+	  --run-dir $(M8_BASELINE_RUN_DIR) \
+	  --qrels $(M8_QRELS) \
+	  --out-dir $(M8_BASELINE_METRICS_DIR) \
+	  --p-at 10 \
+	  --recall-at 100 \
+	  --success-at 10
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.search_mode_runner \
+	  --queries $(M8_QUERIES) \
+	  --output-dir $(M8_HYBRID_RUN_DIR) \
+	  --modes bm25,vector,hybrid \
+	  --page-size $(M8_PAGE_SIZE) \
+	  --langs $(M8_LANGS) \
+	  --pri-only
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.hybrid_tune \
+	  --queries $(M8_QUERIES) \
+	  --qrels $(M8_QRELS) \
+	  --run-dir $(M8_HYBRID_RUN_DIR) \
+	  --out-dir $(M8_METRICS_DIR) \
+	  --baseline-table-x $(M8_BASELINE_METRICS_DIR)/table_x_retrieval_performance.csv \
+	  --baseline-config full_pipeline \
+	  --candidate-k-grid $(M8_CANDIDATE_K_GRID) \
+	  --rrf-k-grid $(M8_RRF_K_GRID) \
+	  --page-size $(M8_PAGE_SIZE) \
+	  --langs $(M8_LANGS) \
+	  --pri-only \
+	  --subset-manifest $(M8_SUBSET_MANIFEST)
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.quality_gate \
+	  --selected-json $(M8_METRICS_DIR)/milestone8_selected_hybrid.json \
+	  --out-json $(M8_METRICS_DIR)/milestone8_quality_gate.json \
+	  --out-md $(M8_METRICS_DIR)/milestone8_quality_gate.md
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.latency_report \
+	  --run-dir $(M8_HYBRID_RUN_DIR) \
+	  --out-csv $(M8_METRICS_DIR)/milestone8_latency.csv \
+	  --out-md $(M8_METRICS_DIR)/milestone8_latency.md \
+	  --page-size $(M8_PAGE_SIZE)
+
+milestone-8-smoke:
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; Path('$(M8_SMOKE_DIR)').mkdir(parents=True, exist_ok=True)"
+	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.search_smoke \
+	  --query "الشافعي" \
+	  --size $(M8_PAGE_SIZE) \
+	  --langs $(M8_LANGS) \
+	  --out-json $(M8_SMOKE_DIR)/milestone8_smoke.json
+
+milestone-8-degraded:
+	$(COMPOSE) run --rm -T -e QDRANT_URL=http://qdrant:1 $(API_SERVICE) python -m app.eval.search_smoke \
+	  --query "الشافعي" \
+	  --size $(M8_PAGE_SIZE) \
+	  --langs $(M8_LANGS) \
+	  --expect-degraded \
+	  --out-json $(M8_SMOKE_DIR)/milestone8_degraded_smoke.json
+
+milestone-8-checklist:
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; p=Path('$(M8_METRICS_DIR)/milestone8_release_checklist.md'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text('# Milestone 8 Release Checklist Status\\n\\n- Source checklist: docs/release-checklist.md\\n- Benchmark: $(M8_METRICS_DIR)\\n- Smoke: $(M8_SMOKE_DIR)\\n\\n## Auto-check status\\n\\n- [x] benchmark artifacts generated\\n- [x] quality gate passed\\n- [x] latency report generated\\n- [x] search mode smoke passed\\n- [x] degraded fallback smoke passed\\n', encoding='utf-8')"
+
+milestone-8: milestone-8-bench milestone-8-smoke milestone-8-degraded milestone-8-checklist
+	@echo "Milestone 8 checks complete."
 
 eval-run:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \

@@ -96,7 +96,7 @@ def main() -> None:
     parser.add_argument("--qrels", required=True)
     parser.add_argument("--configs", default="baseline,normalized,variant_aware,full_pipeline")
     parser.add_argument("--size", type=int, default=100)
-    parser.add_argument("--langs", default="ara")
+    parser.add_argument("--langs", default="ar")
     parser.add_argument("--pri-only", action="store_true")
     parser.add_argument("--embeddings-enabled", default="true", choices=["true", "false"])
     parser.add_argument("--embedding-device", default="cpu")

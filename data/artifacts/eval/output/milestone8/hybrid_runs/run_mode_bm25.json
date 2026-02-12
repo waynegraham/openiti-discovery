@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "config": "mode_bm25",
+    "size": 100,
+    "page_size": 20,
+    "pri_only": true,
+    "langs": [
+      "ar"
+    ],
+    "generated_at_epoch": 1770597708.5195417,
+    "query_latencies_ms": [
+      17.3362539972004,
+      7.301033001567703,
+      6.922677999682492,
+      7.950956998683978,
+      6.980561000091257
+    ],
+    "effective_mode_counts": {
+      "bm25": 5
+    },
+    "warnings_seen": []
+  },
+  "results": []
+}
