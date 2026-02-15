@@ -1,0 +1,2 @@
+retrieval_configuration,category,precision_at_10,recall_at_100,map,task_success_rate_pct
+full_pipeline,known_entity,0.0000,0.0000,0.0000,0.0000

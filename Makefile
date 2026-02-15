@@ -34,14 +34,19 @@ define wait_http
 endef
 
 .PHONY: help up down reset logs ps \
-        wait migrate template-validate template index alias smoke-alias status milestone-1 \
-        init init-no-data ingest gpu-ingest frontend-test milestone-5 facet-labels-validate milestone-6 \
-        backfill-languages milestone-7 \
-        milestone-8-bench milestone-8-smoke milestone-8-degraded milestone-8-checklist milestone-8 \
+        wait migrate template-validate template index alias smoke-alias status \
+        onboard onboard-no-ingest verify-platform-bootstrap \
+        ingest gpu-ingest \
+        test-unit-backend test-frontend-integration test-reading-routes \
+        validate-facet-labels test-facets \
+        migrate-backfill-languages test-language \
+        system-benchmark system-smoke system-degraded report-release-checklist system-test \
         eval-scaffold eval-import-forms eval-corpus-plan eval-qrels-audit \
         eval-qualitative eval-scalability-measure eval-run-subsets \
         eval-run eval-metrics eval-tables eval-record eval-all \
-        index-sizes
+        report-index-sizes report-eval-metrics report-eval-tables report-eval-record \
+        init init-no-data frontend-test facet-labels-validate \
+        backfill-languages index-sizes
 
 # ---- Evaluation config ----
 EVAL_QUERIES ?= /app/data/eval/queries.json
@@ -59,40 +64,43 @@ EVAL_FORMS_QUERIES_CSV ?= /app/data/eval/forms/queries_form.csv
 EVAL_FORMS_QRELS_CSV ?= /app/data/eval/forms/qrels_form.csv
 EVAL_TARGET_LINES ?= 1000000,5000000,20000000
 EVAL_SUBSET_MANIFEST ?= /app/data/eval/subsets.sample.json
-M8_LANGS ?= ar
-M8_PAGE_SIZE ?= 20
-M8_CANDIDATE_K_GRID ?= 100,200,400
-M8_RRF_K_GRID ?= 30,60,90
-M8_QUERIES_HOST ?= data/eval/queries.json
-M8_QRELS_HOST ?= data/eval/qrels.json
-M8_SUBSET_MANIFEST_HOST ?= data/eval/subsets.sample.json
-M8_INPUT_DIR ?= /artifacts/milestone8/input
-M8_QUERIES ?= $(M8_INPUT_DIR)/queries.json
-M8_QRELS ?= $(M8_INPUT_DIR)/qrels.json
-M8_SUBSET_MANIFEST ?= $(M8_INPUT_DIR)/subsets.sample.json
-M8_OUT_ROOT ?= /artifacts/eval/output/milestone8
-M8_BASELINE_RUN_DIR ?= $(M8_OUT_ROOT)/baseline_runs
-M8_BASELINE_METRICS_DIR ?= $(M8_OUT_ROOT)/baseline_metrics
-M8_HYBRID_RUN_DIR ?= $(M8_OUT_ROOT)/hybrid_runs
-M8_METRICS_DIR ?= $(M8_OUT_ROOT)/metrics
-M8_SMOKE_DIR ?= $(M8_OUT_ROOT)/smoke
+SYSTEM_LANGS ?= ar
+SYSTEM_PAGE_SIZE ?= 20
+SYSTEM_CANDIDATE_K_GRID ?= 100,200,400
+SYSTEM_RRF_K_GRID ?= 30,60,90
+SYSTEM_QUERIES_HOST ?= data/eval/queries.json
+SYSTEM_QRELS_HOST ?= data/eval/qrels.json
+SYSTEM_SUBSET_MANIFEST_HOST ?= data/eval/subsets.sample.json
+SYSTEM_INPUT_DIR ?= /artifacts/system/input
+SYSTEM_QUERIES ?= $(SYSTEM_INPUT_DIR)/queries.json
+SYSTEM_QRELS ?= $(SYSTEM_INPUT_DIR)/qrels.json
+SYSTEM_SUBSET_MANIFEST ?= $(SYSTEM_INPUT_DIR)/subsets.sample.json
+SYSTEM_OUT_ROOT ?= /artifacts/eval/output/system
+SYSTEM_BASELINE_RUN_DIR ?= $(SYSTEM_OUT_ROOT)/baseline_runs
+SYSTEM_BASELINE_METRICS_DIR ?= $(SYSTEM_OUT_ROOT)/baseline_metrics
+SYSTEM_HYBRID_RUN_DIR ?= $(SYSTEM_OUT_ROOT)/hybrid_runs
+SYSTEM_METRICS_DIR ?= $(SYSTEM_OUT_ROOT)/metrics
+SYSTEM_SMOKE_DIR ?= $(SYSTEM_OUT_ROOT)/smoke
 
 help:
 	@echo "Targets:"
-	@echo "  make init           - Start stack, run migrations, apply template, create index, run subset ingest"
-	@echo "  make init-no-data   - Same as init, but skip ingest"
+	@echo "  make onboard        - Start stack, migrate DB, apply template/index/alias, run subset ingest"
+	@echo "  make onboard-no-ingest - Same as onboard, but skip ingest"
+	@echo "  make verify-platform-bootstrap - Platform bootstrap checks (template/index/alias/smoke/status)"
 	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ar/en)"
 	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
-	@echo "  make frontend-test  - Run lightweight frontend route/API integration tests"
-	@echo "  make milestone-5    - Run backend API tests plus frontend integration tests for reading routes"
-	@echo "  make facet-labels-validate - Validate config/facet_labels.csv editorial data"
-	@echo "  make milestone-6    - Run local Milestone 6 checks (facet-label validation)"
-	@echo "  make backfill-languages - One-time language normalization backfill (DB + OpenSearch + Qdrant)"
-	@echo "  make milestone-7    - Run Milestone 7 backend checks"
-	@echo "  make milestone-8-bench - Run Milestone 8 benchmark/tuning/quality-gate flow"
-	@echo "  make milestone-8-smoke - Run Milestone 8 in-process API smoke checks"
-	@echo "  make milestone-8-degraded - Run degraded fallback smoke with Qdrant unavailable"
-	@echo "  make milestone-8    - Run Milestone 8 benchmark + smoke + degraded + checklist"
+	@echo "  make test-unit-backend - Run backend unit/integration pytest suite"
+	@echo "  make test-frontend-integration - Run frontend route/API integration tests"
+	@echo "  make test-reading-routes - Combined backend+frontend reading-route checks"
+	@echo "  make validate-facet-labels - Validate config/facet_labels.csv editorial data"
+	@echo "  make test-facets    - Facet-label validation checks"
+	@echo "  make migrate-backfill-languages - One-time language normalization backfill"
+	@echo "  make test-language  - Language behavior checks"
+	@echo "  make system-benchmark - Benchmark/tuning/quality-gate flow"
+	@echo "  make system-smoke   - In-process API smoke checks"
+	@echo "  make system-degraded - Degraded fallback smoke checks"
+	@echo "  make report-release-checklist - Generate release checklist status artifact"
+	@echo "  make system-test    - Full system test flow"
 	@echo "  make eval-scaffold  - Generate placeholder queries + qrels from paper query framework"
 	@echo "  make eval-import-forms - Convert expert CSV forms into queries.json and qrels.json"
 	@echo "  make eval-corpus-plan - Estimate INGEST_WORK_LIMIT for target corpus line counts"
@@ -104,20 +112,23 @@ help:
 	@echo "  make eval-metrics   - Compute Table X and Table Y CSVs from runs + qrels"
 	@echo "  make eval-tables    - Render markdown tables + compute Table Z"
 	@echo "  make eval-record    - Append experiment metadata + key metrics to experiment_runs.csv"
-	@echo "  make eval-all       - Run eval-run, eval-metrics, eval-tables in sequence"
-	@echo "  make index-sizes    - Report OpenSearch/Qdrant/corpus sizes and copy JSON+CSV to host"
+	@echo "  make report-eval-metrics - Alias for eval-metrics"
+	@echo "  make report-eval-tables - Alias for eval-tables"
+	@echo "  make report-eval-record - Alias for eval-record"
+	@echo "  make eval-all       - Run eval-run, eval-metrics, eval-tables, eval-record in sequence"
+	@echo "  make report-index-sizes - Report OpenSearch/Qdrant/corpus sizes and copy JSON+CSV to host"
 	@echo "  make migrate        - Run alembic upgrade head in api container"
 	@echo "  make template-validate - Validate OpenSearch template JSON syntax"
 	@echo "  make template       - Apply OpenSearch index template"
 	@echo "  make index          - Create versioned OpenSearch index"
 	@echo "  make smoke-alias    - Write and query a smoke doc through alias"
-	@echo "  make milestone-1    - Run Milestone 1 bootstrap validation sequence"
 	@echo "  make status         - Show health of postgres/opensearch/qdrant and alias status"
 	@echo "  make reset          - docker compose down -v (DANGEROUS: deletes volumes)"
 	@echo "  make up             - Bring up core services (postgres/opensearch/qdrant/api/frontend)"
 	@echo "  make down           - Bring down stack (keeps volumes)"
 	@echo "  make logs           - Tail logs"
 	@echo "  make ps             - Show containers"
+	@echo "  Legacy aliases preserved: init, init-no-data, frontend-test, facet-labels-validate, backfill-languages, index-sizes"
 
 up:
 	$(COMPOSE) up -d postgres opensearch qdrant $(API_SERVICE) frontend
@@ -189,22 +200,21 @@ status:
 	@curl -fsS "http://localhost:6333/healthz" || true; echo
 	@echo "Alias ($(OS_ALIAS)):"
 	@curl -fsS "$(OS_URL)/_alias/$(OS_ALIAS)" || echo "Alias missing"
-	@echo
 	@$(COMPOSE) ps
 
 # ---- High-level workflows ----
 
-milestone-1: up wait template-validate template index alias smoke-alias status
-	@echo "Milestone 1 checks complete."
+verify-platform-bootstrap: up wait template-validate template index alias smoke-alias status
+	@echo "Platform bootstrap checks complete."
 
-init-no-data: up wait migrate template-validate template index alias smoke-alias status
-	@echo "Init complete (no ingest)."
+onboard-no-ingest: up wait migrate template-validate template index alias smoke-alias status
+	@echo "Onboarding complete (no ingest)."
 
-init: up wait migrate template-validate template index alias
+onboard: up wait migrate template-validate template index alias
 	@echo "Running subset ingest..."
 	$(MAKE) ingest
 	@$(MAKE) status
-	@echo "Init complete."
+	@echo "Onboarding complete."
 
 ingest:
 	@echo "Running ingest (subset) with:"
@@ -238,94 +248,109 @@ gpu-ingest:
 	  -e EMBEDDING_DEVICE=cuda \
 	  ingest_cuda
 
-frontend-test:
+test-unit-backend:
+	python -m pytest apps/api/tests -q
+
+test-frontend-integration:
 	cd apps/frontend && npm run test
 
-milestone-5:
+test-reading-routes:
 	python -m pytest apps/api/tests/test_main_api.py -q
-	$(MAKE) frontend-test
+	$(MAKE) test-frontend-integration
 
-facet-labels-validate:
+validate-facet-labels:
 	python apps/api/scripts/validate_facet_labels.py --path config/facet_labels.csv
 
-milestone-6: facet-labels-validate
+test-facets: validate-facet-labels
 
-backfill-languages:
+migrate-backfill-languages:
 	$(COMPOSE) exec -T $(API_SERVICE) python scripts/backfill_languages.py
 
-milestone-7:
+test-language:
 	python -m pytest apps/api/tests/test_language.py apps/api/tests/test_repos_works.py apps/api/tests/test_main_api.py apps/api/tests/test_ingest_language.py -q
 
-milestone-8-bench:
-	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; [Path(p).mkdir(parents=True, exist_ok=True) for p in ['$(M8_INPUT_DIR)','$(M8_BASELINE_RUN_DIR)','$(M8_BASELINE_METRICS_DIR)','$(M8_HYBRID_RUN_DIR)','$(M8_METRICS_DIR)']]"
-	$(COMPOSE) cp $(M8_QUERIES_HOST) $(API_SERVICE):$(M8_QUERIES)
-	$(COMPOSE) cp $(M8_QRELS_HOST) $(API_SERVICE):$(M8_QRELS)
-	$(COMPOSE) cp $(M8_SUBSET_MANIFEST_HOST) $(API_SERVICE):$(M8_SUBSET_MANIFEST)
+system-benchmark: verify-platform-bootstrap
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; [Path(p).mkdir(parents=True, exist_ok=True) for p in ['$(SYSTEM_INPUT_DIR)','$(SYSTEM_BASELINE_RUN_DIR)','$(SYSTEM_BASELINE_METRICS_DIR)','$(SYSTEM_HYBRID_RUN_DIR)','$(SYSTEM_METRICS_DIR)']]"
+	$(COMPOSE) cp $(SYSTEM_QUERIES_HOST) $(API_SERVICE):$(SYSTEM_QUERIES)
+	$(COMPOSE) cp $(SYSTEM_QRELS_HOST) $(API_SERVICE):$(SYSTEM_QRELS)
+	$(COMPOSE) cp $(SYSTEM_SUBSET_MANIFEST_HOST) $(API_SERVICE):$(SYSTEM_SUBSET_MANIFEST)
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \
-	  --queries $(M8_QUERIES) \
-	  --output-dir $(M8_BASELINE_RUN_DIR) \
+	  --queries $(SYSTEM_QUERIES) \
+	  --output-dir $(SYSTEM_BASELINE_RUN_DIR) \
 	  --configs baseline,normalized,variant_aware,full_pipeline \
 	  --size 100 \
-	  --langs $(M8_LANGS) \
+	  --langs $(SYSTEM_LANGS) \
 	  $(if $(filter true,$(EVAL_PRI_ONLY)),--pri-only,)
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.metrics \
-	  --run-dir $(M8_BASELINE_RUN_DIR) \
-	  --qrels $(M8_QRELS) \
-	  --out-dir $(M8_BASELINE_METRICS_DIR) \
+	  --run-dir $(SYSTEM_BASELINE_RUN_DIR) \
+	  --qrels $(SYSTEM_QRELS) \
+	  --out-dir $(SYSTEM_BASELINE_METRICS_DIR) \
 	  --p-at 10 \
 	  --recall-at 100 \
 	  --success-at 10
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.search_mode_runner \
-	  --queries $(M8_QUERIES) \
-	  --output-dir $(M8_HYBRID_RUN_DIR) \
+	  --queries $(SYSTEM_QUERIES) \
+	  --output-dir $(SYSTEM_HYBRID_RUN_DIR) \
 	  --modes bm25,vector,hybrid \
-	  --page-size $(M8_PAGE_SIZE) \
-	  --langs $(M8_LANGS) \
+	  --page-size $(SYSTEM_PAGE_SIZE) \
+	  --langs $(SYSTEM_LANGS) \
 	  --pri-only
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.hybrid_tune \
-	  --queries $(M8_QUERIES) \
-	  --qrels $(M8_QRELS) \
-	  --run-dir $(M8_HYBRID_RUN_DIR) \
-	  --out-dir $(M8_METRICS_DIR) \
-	  --baseline-table-x $(M8_BASELINE_METRICS_DIR)/table_x_retrieval_performance.csv \
+	  --queries $(SYSTEM_QUERIES) \
+	  --qrels $(SYSTEM_QRELS) \
+	  --run-dir $(SYSTEM_HYBRID_RUN_DIR) \
+	  --out-dir $(SYSTEM_METRICS_DIR) \
+	  --baseline-table-x $(SYSTEM_BASELINE_METRICS_DIR)/table_x_retrieval_performance.csv \
 	  --baseline-config full_pipeline \
-	  --candidate-k-grid $(M8_CANDIDATE_K_GRID) \
-	  --rrf-k-grid $(M8_RRF_K_GRID) \
-	  --page-size $(M8_PAGE_SIZE) \
-	  --langs $(M8_LANGS) \
+	  --candidate-k-grid $(SYSTEM_CANDIDATE_K_GRID) \
+	  --rrf-k-grid $(SYSTEM_RRF_K_GRID) \
+	  --page-size $(SYSTEM_PAGE_SIZE) \
+	  --langs $(SYSTEM_LANGS) \
 	  --pri-only \
-	  --subset-manifest $(M8_SUBSET_MANIFEST)
+	  --subset-manifest $(SYSTEM_SUBSET_MANIFEST)
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.quality_gate \
-	  --selected-json $(M8_METRICS_DIR)/milestone8_selected_hybrid.json \
-	  --out-json $(M8_METRICS_DIR)/milestone8_quality_gate.json \
-	  --out-md $(M8_METRICS_DIR)/milestone8_quality_gate.md
+	  --selected-json $(SYSTEM_METRICS_DIR)/milestone8_selected_hybrid.json \
+	  --out-json $(SYSTEM_METRICS_DIR)/system_quality_gate.json \
+	  --out-md $(SYSTEM_METRICS_DIR)/system_quality_gate.md
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.latency_report \
-	  --run-dir $(M8_HYBRID_RUN_DIR) \
-	  --out-csv $(M8_METRICS_DIR)/milestone8_latency.csv \
-	  --out-md $(M8_METRICS_DIR)/milestone8_latency.md \
-	  --page-size $(M8_PAGE_SIZE)
+	  --run-dir $(SYSTEM_HYBRID_RUN_DIR) \
+	  --out-csv $(SYSTEM_METRICS_DIR)/system_latency.csv \
+	  --out-md $(SYSTEM_METRICS_DIR)/system_latency.md \
+	  --page-size $(SYSTEM_PAGE_SIZE)
 
-milestone-8-smoke:
-	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; Path('$(M8_SMOKE_DIR)').mkdir(parents=True, exist_ok=True)"
+system-smoke:
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; Path('$(SYSTEM_SMOKE_DIR)').mkdir(parents=True, exist_ok=True)"
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.search_smoke \
 	  --query "الشافعي" \
-	  --size $(M8_PAGE_SIZE) \
-	  --langs $(M8_LANGS) \
-	  --out-json $(M8_SMOKE_DIR)/milestone8_smoke.json
+	  --size $(SYSTEM_PAGE_SIZE) \
+	  --langs $(SYSTEM_LANGS) \
+	  --out-json $(SYSTEM_SMOKE_DIR)/system_smoke.json
 
-milestone-8-degraded:
+system-degraded:
 	$(COMPOSE) run --rm -T -e QDRANT_URL=http://qdrant:1 $(API_SERVICE) python -m app.eval.search_smoke \
 	  --query "الشافعي" \
-	  --size $(M8_PAGE_SIZE) \
-	  --langs $(M8_LANGS) \
+	  --size $(SYSTEM_PAGE_SIZE) \
+	  --langs $(SYSTEM_LANGS) \
 	  --expect-degraded \
-	  --out-json $(M8_SMOKE_DIR)/milestone8_degraded_smoke.json
+	  --out-json $(SYSTEM_SMOKE_DIR)/system_degraded_smoke.json
 
-milestone-8-checklist:
-	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; p=Path('$(M8_METRICS_DIR)/milestone8_release_checklist.md'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text('# Milestone 8 Release Checklist Status\\n\\n- Source checklist: docs/release-checklist.md\\n- Benchmark: $(M8_METRICS_DIR)\\n- Smoke: $(M8_SMOKE_DIR)\\n\\n## Auto-check status\\n\\n- [x] benchmark artifacts generated\\n- [x] quality gate passed\\n- [x] latency report generated\\n- [x] search mode smoke passed\\n- [x] degraded fallback smoke passed\\n', encoding='utf-8')"
+report-release-checklist:
+	$(COMPOSE) exec -T $(API_SERVICE) python -c "from pathlib import Path; p=Path('$(SYSTEM_METRICS_DIR)/release_checklist.md'); p.parent.mkdir(parents=True, exist_ok=True); p.write_text('# Release Checklist Status\\n\\n- Source checklist: docs/release-checklist.md\\n- Benchmark: $(SYSTEM_METRICS_DIR)\\n- Smoke: $(SYSTEM_SMOKE_DIR)\\n\\n## Auto-check status\\n\\n- [x] benchmark artifacts generated\\n- [x] quality gate passed\\n- [x] latency report generated\\n- [x] search mode smoke passed\\n- [x] degraded fallback smoke passed\\n', encoding='utf-8')"
 
-milestone-8: milestone-8-bench milestone-8-smoke milestone-8-degraded milestone-8-checklist
-	@echo "Milestone 8 checks complete."
+system-test: onboard system-benchmark system-smoke system-degraded report-release-checklist
+	@echo "System tests complete."
+
+# ---- Backward-compatible aliases ----
+
+init-no-data: onboard-no-ingest
+
+init: onboard
+
+frontend-test: test-frontend-integration
+
+facet-labels-validate: validate-facet-labels
+
+backfill-languages: migrate-backfill-languages
 
 eval-run:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.runner \
@@ -345,11 +370,15 @@ eval-metrics:
 	  --recall-at 100 \
 	  --success-at 10
 
+report-eval-metrics: eval-metrics
+
 eval-tables:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.tables \
 	  --metrics-dir $(EVAL_METRICS_DIR) \
 	  --out-dir $(EVAL_TABLES_DIR) \
 	  --scalability-manifest $(EVAL_SCALABILITY_MANIFEST)
+
+report-eval-tables: eval-tables
 
 eval-scaffold:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.scaffold \
@@ -391,7 +420,7 @@ eval-scalability-measure:
 	  --manifest $(EVAL_SCALABILITY_MANIFEST) \
 	  --out-csv /app/data/eval/output/metrics/table_z_scalability_measured.csv
 
-index-sizes:
+report-index-sizes:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.index_sizes \
 	  --opensearch-target $(OS_SIZE_TARGET) \
 	  --qdrant-collection $(QDRANT_SIZE_COLLECTION) \
@@ -402,6 +431,8 @@ index-sizes:
 	$(COMPOSE) cp $(API_SERVICE):$(INDEX_SIZES_OUT_JSON) $(INDEX_SIZES_LOCAL_DIR)/
 	$(COMPOSE) cp $(API_SERVICE):$(INDEX_SIZES_OUT_CSV) $(INDEX_SIZES_LOCAL_DIR)/
 	@echo "Copied reports to $(INDEX_SIZES_LOCAL_DIR)"
+
+index-sizes: report-index-sizes
 
 eval-run-subsets:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.subset_runner \
@@ -427,6 +458,8 @@ eval-record:
 	  --tables-dir $(EVAL_TABLES_DIR) \
 	  --out-csv /app/data/eval/output/experiment_runs.csv \
 	  --append
+
+report-eval-record: eval-record
 
 eval-all:
 	$(MAKE) eval-run

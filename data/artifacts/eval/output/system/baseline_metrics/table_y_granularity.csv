@@ -1,0 +1,4 @@
+granularity_level,precision_at_10,recall_at_100,map
+passage-level,0.0000,0.0000,0.0000
+work-level,0.0000,0.0000,0.0000
+author-level,0.0000,0.0000,0.0000

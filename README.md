@@ -25,7 +25,7 @@ This section is the source of truth for runtime constraints until Milestone 7 ex
 * `INGEST_WORK_LIMIT` defaults to `200` when unset.
 * `INGEST_ONLY_PRI` defaults to `true`.
 * Facet labels are loaded only from `active=true` rows in `config/facet_labels.csv`.
-* Use `make facet-labels-validate` for local editorial validation before commits. Current workflow defers CI wiring until workflow files are merged from the CI branch.
+* Use `make validate-facet-labels` for local editorial validation before commits. Current workflow defers CI wiring until workflow files are merged from the CI branch.
 
 Supporting docs (`docs/ingestion.md`, `docs/onboarding.md`, `docs/facet-labels.md`) are expected to match this section.
 
@@ -102,7 +102,20 @@ cp .env.example .env
 
 Set `OPENSEARCH_INITIAL_ADMIN_PASSWORD` and any ingest controls you want to override.
 
-### 3. Start Core Services
+### 3. Fast Onboarding (Recommended)
+
+Use the onboarding targets in the `Makefile`:
+
+```bash
+make onboard-no-ingest   # bootstrap stack + migrations + index/alias checks (no corpus ingest)
+make onboard             # same as above, then run subset ingest
+```
+
+Legacy milestone/`init` names are still available as aliases for backward compatibility.
+
+If you prefer step-by-step setup, use the manual flow below.
+
+### 4. Start Core Services
 
 ```bash
 docker compose up -d
@@ -141,18 +154,18 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu up 
 
 When using `api_cuda`, point the frontend/API client to `http://localhost:8000` as usual.
 
-### 4. Run Database Migrations
+### 5. Run Database Migrations
 
 ```bash
 docker compose exec api alembic upgrade head
 ```
 
-### 5. Create OpenSearch Indices
+### 6. Create OpenSearch Indices
 
 Preferred (single command, includes template JSON validation and alias smoke test):
 
 ```bash
-make milestone-1
+make verify-platform-bootstrap
 ```
 
 Manual equivalent:
@@ -242,7 +255,7 @@ Search/embedding runtime behavior is configured in:
 Validate facet-label edits locally:
 
 ```bash
-make facet-labels-validate
+make validate-facet-labels
 ```
 
 ---
@@ -273,18 +286,56 @@ Facet behavior:
 
 ---
 
-## Running Tests
+## Testing and Reporting
 
-Run backend tests from the repository root:
+### Unit and Integration Tests
+
+Run backend unit/integration tests:
 
 ```bash
-python -m pytest apps/api/tests -q
+make test-unit-backend
 ```
 
-To run just the API search tests used for milestone validation:
+Run frontend route/API integration tests:
 
 ```bash
-python -m pytest apps/api/tests/test_main_api.py -q
+make test-frontend-integration
+```
+
+Milestone-specific local checks:
+
+```bash
+make test-milestone5-reading-routes
+make test-milestone6-facets
+make test-milestone7-language
+```
+
+### System Testing
+
+Run full Milestone 8 system validation (benchmark, smoke, degraded fallback, checklist artifact):
+
+```bash
+make system-test-m8
+```
+
+You can also run each phase independently:
+
+```bash
+make system-benchmark-m8
+make system-smoke-m8
+make system-degraded-m8
+make report-m8-checklist
+```
+
+### Reporting Outputs
+
+Generate evaluation/report artifacts:
+
+```bash
+make report-eval-metrics
+make report-eval-tables
+make report-eval-record
+make report-index-sizes
 ```
 
 ---
@@ -336,17 +387,17 @@ The API container includes a full reproducible workflow for conference/paper exp
 ### Core Pipeline
 
 * `make eval-run` -> run retrieval configs (`baseline`, `normalized`, `variant_aware`, `full_pipeline`)
-* `make eval-metrics` -> compute Table X + Table Y metrics
-* `make eval-tables` -> render markdown tables and Table Z CSV
-* `make eval-record` -> append run metadata to `data/eval/output/experiment_runs.csv`
+* `make report-eval-metrics` -> compute Table X + Table Y metrics
+* `make report-eval-tables` -> render markdown tables and Table Z CSV
+* `make report-eval-record` -> append run metadata to `data/eval/output/experiment_runs.csv`
 * `make eval-all` -> run `eval-run`, `eval-metrics`, `eval-tables`, `eval-record`
 
 ### Milestone 8 Validation (Docker-first)
 
-* `make milestone-8-bench` -> baseline metrics, hybrid tuning sweep, no-regression quality gate, latency report
-* `make milestone-8-smoke` -> search mode smoke (`bm25`, `vector`, `hybrid`) and reading-route checks
-* `make milestone-8-degraded` -> degraded fallback smoke (`hybrid` -> `bm25` when Qdrant unavailable)
-* `make milestone-8` -> full Milestone 8 flow (`bench` + `smoke` + `degraded` + checklist artifact)
+* `make system-benchmark-m8` -> baseline metrics, hybrid tuning sweep, no-regression quality gate, latency report
+* `make system-smoke-m8` -> search mode smoke (`bm25`, `vector`, `hybrid`) and reading-route checks
+* `make system-degraded-m8` -> degraded fallback smoke (`hybrid` -> `bm25` when Qdrant unavailable)
+* `make system-test-m8` -> full Milestone 8 flow (`bench` + `smoke` + `degraded` + checklist artifact)
 
 Milestone 8 artifacts are written under `/artifacts/eval/output/milestone8` in the API container.
 
