@@ -111,7 +111,7 @@ make onboard-no-ingest   # bootstrap stack + migrations + index/alias checks (no
 make onboard             # same as above, then run subset ingest
 ```
 
-Legacy milestone/`init` names are still available as aliases for backward compatibility.
+Legacy `init` names are still available as aliases for backward compatibility.
 
 If you prefer step-by-step setup, use the manual flow below.
 
@@ -302,29 +302,29 @@ Run frontend route/API integration tests:
 make test-frontend-integration
 ```
 
-Milestone-specific local checks:
+Additional local checks:
 
 ```bash
-make test-milestone5-reading-routes
-make test-milestone6-facets
-make test-milestone7-language
+make test-reading-routes
+make test-facets
+make test-language
 ```
 
 ### System Testing
 
-Run full Milestone 8 system validation (benchmark, smoke, degraded fallback, checklist artifact):
+Run full system validation (benchmark, smoke, degraded fallback, checklist artifact):
 
 ```bash
-make system-test-m8
+make system-test
 ```
 
 You can also run each phase independently:
 
 ```bash
-make system-benchmark-m8
-make system-smoke-m8
-make system-degraded-m8
-make report-m8-checklist
+make system-benchmark
+make system-smoke
+make system-degraded
+make report-release-checklist
 ```
 
 ### Reporting Outputs
@@ -394,10 +394,10 @@ The API container includes a full reproducible workflow for conference/paper exp
 
 ### Milestone 8 Validation (Docker-first)
 
-* `make system-benchmark-m8` -> baseline metrics, hybrid tuning sweep, no-regression quality gate, latency report
-* `make system-smoke-m8` -> search mode smoke (`bm25`, `vector`, `hybrid`) and reading-route checks
-* `make system-degraded-m8` -> degraded fallback smoke (`hybrid` -> `bm25` when Qdrant unavailable)
-* `make system-test-m8` -> full Milestone 8 flow (`bench` + `smoke` + `degraded` + checklist artifact)
+* `make system-benchmark` -> baseline metrics, hybrid tuning sweep, no-regression quality gate, latency report
+* `make system-smoke` -> search mode smoke (`bm25`, `vector`, `hybrid`) and reading-route checks
+* `make system-degraded` -> degraded fallback smoke (`hybrid` -> `bm25` when Qdrant unavailable)
+* `make system-test` -> full Milestone 8 flow (`bench` + `smoke` + `degraded` + checklist artifact)
 
 Milestone 8 artifacts are written under `/artifacts/eval/output/milestone8` in the API container.
 
