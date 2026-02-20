@@ -39,6 +39,9 @@ def ensure_write_index_target(index_or_alias: str) -> str:
     - If it is a concrete index, return it unchanged.
     - If it is an alias with missing/invalid write index state, pick one target index
       and update alias metadata so exactly one index has `is_write_index=true`.
+    - If neither index nor alias exists yet, auto-bootstrap:
+      - `*_vN` names are treated as concrete indices and created directly.
+      - other names are treated as aliases and created as `<name>_v1` write aliases.
     """
     client = get_opensearch()
 
@@ -46,9 +49,27 @@ def ensure_write_index_target(index_or_alias: str) -> str:
         return index_or_alias
 
     if not client.indices.exists_alias(name=index_or_alias):
-        raise RuntimeError(
-            f"OpenSearch target '{index_or_alias}' is neither an existing index nor alias."
+        # Auto-bootstrap missing write target to reduce first-run/operator friction.
+        if re.search(r"_v\d+$", index_or_alias):
+            client.indices.create(index=index_or_alias, ignore=400)
+            return index_or_alias
+
+        bootstrap_index = f"{index_or_alias}_v1"
+        client.indices.create(index=bootstrap_index, ignore=400)
+        client.indices.update_aliases(
+            body={
+                "actions": [
+                    {
+                        "add": {
+                            "index": bootstrap_index,
+                            "alias": index_or_alias,
+                            "is_write_index": True,
+                        }
+                    }
+                ]
+            }
         )
+        return index_or_alias
 
     alias_view = client.indices.get_alias(name=index_or_alias)
     if not alias_view:

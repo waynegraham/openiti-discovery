@@ -7,6 +7,7 @@ import csv
 import json
 import hashlib
 import logging
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List, Optional, Tuple, Dict, Literal
@@ -65,6 +66,10 @@ OS_BULK_BATCH = int(os.getenv("OPENSEARCH_BULK_BATCH", "500") or "500")
 
 # Curated tags (for faceting)
 CURATED_TAGS_PATH = os.getenv("CURATED_TAGS_PATH", "")
+DISCOVERY_INDEX_PATH = (os.getenv("DISCOVERY_INDEX_PATH", "") or "").strip()
+DISCOVERY_INDEX_VERIFY_FILES = os.getenv("DISCOVERY_INDEX_VERIFY_FILES", "false").lower() in ("1", "true", "yes")
+DISCOVERY_INDEX_DEFAULT_REL = "metadata/discovery_index.v1.json"
+DISCOVERY_INDEX_ARTIFACT = "/artifacts/discovery/discovery_index.v1.json"
 
 INGEST_FLOW_ORDER = ("discovered", "parsed", "indexed_bm25", "embedded", "complete")
 
@@ -213,8 +218,12 @@ def _infer_language_from_path(repo_path: str) -> str:
     return infer_language_from_text(repo_path)
 
 
+def _metadata_csv_path(corpus_root: Path) -> Path:
+    return corpus_root / "OpenITI_metadata_2023-1-8.csv"
+
+
 def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, dict], dict[str, dict]]:
-    csv_path = corpus_root / "OpenITI_metadata_2023-1-8.csv"
+    csv_path = _metadata_csv_path(corpus_root)
     if not csv_path.exists():
         LOG.warning("Metadata CSV not found at %s; skipping metadata enrichment.", csv_path)
         return {}, {}
@@ -269,6 +278,144 @@ def load_metadata(corpus_root: Path, curated_tags: set[str]) -> tuple[dict[str, 
 
     LOG.info("Loaded metadata: %d by path, %d by version", len(by_path), len(by_version))
     return by_path, by_version
+
+
+def _index_candidate_paths(corpus_root: Path) -> list[Path]:
+    candidates: list[Path] = []
+    if DISCOVERY_INDEX_PATH:
+        env_path = Path(DISCOVERY_INDEX_PATH)
+        candidates.append(env_path if env_path.is_absolute() else (corpus_root / env_path))
+    candidates.append(corpus_root / DISCOVERY_INDEX_DEFAULT_REL)
+    candidates.append(Path(DISCOVERY_INDEX_ARTIFACT))
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for p in candidates:
+        key = str(p.resolve()) if p.exists() else str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(p)
+    return deduped
+
+
+def load_discovery_index(corpus_root: Path) -> list[dict]:
+    chosen: Path | None = None
+    for candidate in _index_candidate_paths(corpus_root):
+        if candidate.exists():
+            chosen = candidate
+            break
+    if chosen is None:
+        return []
+
+    try:
+        payload = json.loads(chosen.read_text(encoding="utf-8"))
+    except Exception as exc:
+        LOG.warning("Discovery index exists but failed to parse (%s): %s", chosen, exc)
+        return []
+
+    entries_raw = payload.get("entries")
+    if not isinstance(entries_raw, list):
+        LOG.warning("Discovery index at %s is missing an 'entries' list.", chosen)
+        return []
+
+    entries: list[dict] = []
+    for row in entries_raw:
+        if not isinstance(row, dict):
+            continue
+        repo_path = _normalize_repo_path(str(row.get("repo_path") or ""))
+        if not repo_path:
+            continue
+        if not repo_path.startswith("data/"):
+            repo_path = f"data/{repo_path}"
+        entries.append(
+            {
+                "repo_path": repo_path,
+                "author_id": str(row.get("author_id") or "").strip() or None,
+                "work_id": str(row.get("work_id") or "").strip() or None,
+                "version_id": str(row.get("version_id") or "").strip() or None,
+                "status": str(row.get("status") or "").strip() or None,
+                "version_label": str(row.get("version_label") or "").strip() or None,
+                "lang": normalize_language_tag(row.get("lang")),
+                "lang_raw": row.get("lang_raw"),
+            }
+        )
+
+    csv_meta = payload.get("metadata_csv") or {}
+    csv_path = _metadata_csv_path(corpus_root)
+    if csv_path.exists() and isinstance(csv_meta, dict):
+        expected_mtime = csv_meta.get("mtime_ns")
+        expected_size = csv_meta.get("size_bytes")
+        if isinstance(expected_mtime, int) and isinstance(expected_size, int):
+            stat = csv_path.stat()
+            if stat.st_mtime_ns != expected_mtime or stat.st_size != expected_size:
+                LOG.warning(
+                    "Discovery index (%s) appears stale versus metadata CSV (%s). "
+                    "Refresh with: python -m app.ingest.build_index --corpus-root %s --out-json %s",
+                    chosen,
+                    csv_path,
+                    corpus_root,
+                    chosen,
+                )
+
+    LOG.info("Loaded discovery index: %d entries from %s", len(entries), chosen)
+    return entries
+
+
+def build_discovery_index(
+    corpus_root: Path,
+    out_json: Path,
+    *,
+    curated_tags: set[str] | None = None,
+) -> dict[str, int | str]:
+    curated = curated_tags if curated_tags is not None else set()
+    by_path, _ = load_metadata(corpus_root, curated)
+    entries: list[dict] = []
+    skipped_missing = 0
+
+    for local_path, meta in sorted(by_path.items(), key=lambda kv: kv[0]):
+        repo_rel, abs_path = _resolve_local_path(corpus_root, local_path)
+        if not repo_rel or not abs_path:
+            skipped_missing += 1
+            continue
+        author_id, work_id, version_id, _ = infer_ids_from_path(corpus_root, abs_path)
+        entries.append(
+            {
+                "repo_path": repo_rel,
+                "author_id": author_id,
+                "work_id": work_id,
+                "version_id": version_id,
+                "status": meta.get("status"),
+                "version_label": meta.get("version_label"),
+                "lang": normalize_language_tag(meta.get("lang")),
+                "lang_raw": meta.get("lang_raw"),
+            }
+        )
+
+    csv_path = _metadata_csv_path(corpus_root)
+    csv_meta = {}
+    if csv_path.exists():
+        stat = csv_path.stat()
+        csv_meta = {
+            "path": str(csv_path),
+            "mtime_ns": int(stat.st_mtime_ns),
+            "size_bytes": int(stat.st_size),
+        }
+
+    payload = {
+        "schema_version": 1,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "corpus_root": str(corpus_root),
+        "metadata_csv": csv_meta,
+        "entries": entries,
+    }
+    out_json.parent.mkdir(parents=True, exist_ok=True)
+    out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "indexed_entries": len(entries),
+        "skipped_missing_files": skipped_missing,
+        "out_json": str(out_json),
+    }
 
 
 # ---------------------------
@@ -366,6 +513,37 @@ def _pri_score(path: Path, status: str | None) -> int:
     if "pri" in path.name.lower():
         score += 1
     return score
+
+
+def _pri_score_repo_path(repo_path: str, status: str | None) -> int:
+    score = 0
+    if (status or "").lower() == "pri":
+        score += 2
+    if "pri" in Path(repo_path).name.lower():
+        score += 1
+    return score
+
+
+def _infer_ids_from_repo_path(repo_path: str) -> tuple[str, str, str]:
+    repo_rel = _normalize_repo_path(repo_path)
+    if not repo_rel.startswith("data/"):
+        repo_rel = f"data/{repo_rel}"
+
+    parts = Path(repo_rel).parts
+    if len(parts) < 4:
+        base = Path(repo_rel).stem
+        author_id = "unknown_author"
+        work_id = f"unknown_work::{base}"
+        version_id = f"{work_id}::{base}"
+        return author_id, work_id, version_id
+
+    author_dir = parts[1]
+    work_dir = parts[2]
+    version_file = parts[-1]
+    author_id = author_dir
+    work_id = f"{author_dir}.{work_dir}"
+    version_id = f"{work_id}.{Path(version_file).stem}"
+    return author_id, work_id, version_id
 
 
 def _resolve_local_path(corpus_root: Path, local_path: str) -> tuple[str, Path] | tuple[None, None]:
@@ -501,15 +679,128 @@ def _discover_from_metadata_index(
     return discovered
 
 
+def _discover_from_prebuilt_index(
+    corpus_root: Path,
+    target_works: int,
+    index_entries: list[dict],
+) -> List[DiscoveredText]:
+    if not index_entries:
+        return []
+
+    selected_by_work: dict[tuple[str, str], tuple[dict, int]] = {}
+    all_rows: list[dict] = []
+
+    for row in index_entries:
+        repo_rel = _normalize_repo_path(str(row.get("repo_path") or ""))
+        if not repo_rel:
+            continue
+        if not repo_rel.startswith("data/"):
+            repo_rel = f"data/{repo_rel}"
+
+        lang = normalize_language_tag(row.get("lang"))
+        if not _supports_ingest_language(lang):
+            continue
+
+        author_id = str(row.get("author_id") or "").strip() or None
+        work_id = str(row.get("work_id") or "").strip() or None
+        version_id = str(row.get("version_id") or "").strip() or None
+        if not author_id or not work_id or not version_id:
+            author_id, work_id, version_id = _infer_ids_from_repo_path(repo_rel)
+
+        status = (row.get("status") or "").strip().lower() or None
+        normalized = {
+            "repo_path": repo_rel,
+            "author_id": author_id,
+            "work_id": work_id,
+            "version_id": version_id,
+            "status": status,
+            "version_label": (row.get("version_label") or "").strip() or None,
+            "lang": lang,
+            "lang_raw": row.get("lang_raw"),
+        }
+
+        if DEFAULT_ONLY_PRI:
+            score = _pri_score_repo_path(repo_rel, status)
+            if score <= 0:
+                continue
+            key = (author_id, work_id)
+            prev = selected_by_work.get(key)
+            if prev is None or score > prev[1] or (
+                score == prev[1] and repo_rel < prev[0]["repo_path"]
+            ):
+                selected_by_work[key] = (normalized, score)
+        else:
+            all_rows.append(normalized)
+
+    if DEFAULT_ONLY_PRI:
+        selected = sorted((v[0] for v in selected_by_work.values()), key=lambda r: r["repo_path"])
+        if target_works > 0:
+            selected = selected[:target_works]
+    else:
+        candidates = [
+            (
+                (corpus_root / r["repo_path"]).resolve(),
+                r["repo_path"],
+                r["status"],
+                {"lang": r["lang"], "_row": r},
+            )
+            for r in all_rows
+        ]
+        selected_candidates = _select_with_min_two_languages(candidates, target_works=target_works)
+        selected = [item[3]["_row"] for item in selected_candidates]
+
+    discovered: List[DiscoveredText] = []
+    for row in selected:
+        repo_rel = row["repo_path"]
+        abs_path = (corpus_root / repo_rel).resolve()
+        if DISCOVERY_INDEX_VERIFY_FILES and not abs_path.is_file():
+            continue
+
+        lang = normalize_language_tag(row.get("lang"))
+        if lang == UNKNOWN_LANGUAGE:
+            LOG.warning(
+                "Language metadata missing/unmapped for %s (raw=%s). Using unknown.",
+                repo_rel,
+                row.get("lang_raw"),
+            )
+
+        discovered.append(
+            DiscoveredText(
+                author_id=row["author_id"],
+                work_id=row["work_id"],
+                version_id=row["version_id"],
+                repo_path=repo_rel,
+                abs_path=abs_path,
+                is_pri=_metadata_is_pri(
+                    status=row.get("status"),
+                    version_label=row.get("version_label"),
+                    fallback=("pri" in Path(repo_rel).name.lower()),
+                ),
+                lang=lang,
+            )
+        )
+        if target_works > 0 and len(discovered) >= target_works:
+            break
+
+    return discovered
+
+
 def discover_200_pri_arabic(
     corpus_root: Path,
     target_works: int,
     *,
+    discovery_index_entries: list[dict] | None = None,
     metadata_by_path: dict[str, dict] | None = None,
 ) -> List[DiscoveredText]:
     """
     Discover texts by walking data/ and selecting up to target_works versions.
     """
+    if discovery_index_entries:
+        discovered = _discover_from_prebuilt_index(corpus_root, target_works, discovery_index_entries)
+        if discovered:
+            LOG.info("Discovery used prebuilt index: %d texts", len(discovered))
+            return discovered
+
     if metadata_by_path:
         discovered = _discover_from_metadata_index(corpus_root, target_works, metadata_by_path)
         if discovered:
@@ -1199,11 +1490,13 @@ def run() -> None:
 
     curated_tags = _load_curated_tags()
     metadata_by_path, metadata_by_version = load_metadata(corpus_root, curated_tags)
+    discovery_index_entries = load_discovery_index(corpus_root)
 
     LOG.info("Discovering texts under %s", corpus_root)
     texts = discover_200_pri_arabic(
         corpus_root,
         target_works=DEFAULT_TARGET_WORKS,
+        discovery_index_entries=discovery_index_entries,
         metadata_by_path=metadata_by_path,
     )
     if not texts:

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..ingest.run import discover_200_pri_arabic
+from ..ingest.run import discover_200_pri_arabic, load_discovery_index
 
 
 def _count_lines(path: Path) -> int:
@@ -31,7 +31,12 @@ def _parse_targets(raw: str) -> list[int]:
 
 def _plan(corpus_root: Path, targets: list[int]) -> list[dict[str, Any]]:
     max_target = max(targets)
-    discovered = discover_200_pri_arabic(corpus_root, target_works=10_000_000)
+    discovery_index_entries = load_discovery_index(corpus_root)
+    discovered = discover_200_pri_arabic(
+        corpus_root,
+        target_works=10_000_000,
+        discovery_index_entries=discovery_index_entries,
+    )
     if not discovered:
         raise SystemExit(f"No texts discovered under {corpus_root}")
 

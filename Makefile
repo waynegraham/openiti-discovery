@@ -14,6 +14,7 @@ CORPUS_SIZE_ROOT ?= /corpus/RELEASE
 INDEX_SIZES_OUT_JSON ?= /app/data/eval/output/metrics/index_sizes_report.json
 INDEX_SIZES_OUT_CSV ?= /app/data/eval/output/metrics/index_sizes_report.csv
 INDEX_SIZES_LOCAL_DIR ?= data/eval/output/metrics
+DISCOVERY_INDEX_OUT ?= /artifacts/discovery/discovery_index.v1.json
 
 # You can override these when calling make:
 # make ingest INGEST_WORK_LIMIT=200 EMBEDDING_DEVICE=cpu
@@ -35,8 +36,8 @@ endef
 
 .PHONY: help up down reset logs ps \
         wait migrate template-validate template index alias smoke-alias status \
-        onboard onboard-no-ingest verify-platform-bootstrap \
-        ingest gpu-ingest \
+        onboard onboard-no-ingest onboard-no-ingest-gpu verify-platform-bootstrap \
+        ingest gpu-ingest discovery-index \
         test-unit-backend test-frontend-integration test-reading-routes \
         validate-facet-labels test-facets \
         migrate-backfill-languages test-language \
@@ -86,9 +87,11 @@ help:
 	@echo "Targets:"
 	@echo "  make onboard        - Start stack, migrate DB, apply template/index/alias, run subset ingest"
 	@echo "  make onboard-no-ingest - Same as onboard, but skip ingest"
+	@echo "  make onboard-no-ingest-gpu - GPU compose/profile + api_cuda variant of onboard-no-ingest"
 	@echo "  make verify-platform-bootstrap - Platform bootstrap checks (template/index/alias/smoke/status)"
 	@echo "  make ingest         - Run subset ingest (defaults: 200 works, PRI, ar/en)"
 	@echo "  make gpu-ingest     - Run subset ingest using CUDA image (Windows/Linux + NVIDIA)"
+	@echo "  make discovery-index - Build precomputed discovery index JSON for faster ingest/eval discovery"
 	@echo "  make test-unit-backend - Run backend unit/integration pytest suite"
 	@echo "  make test-frontend-integration - Run frontend route/API integration tests"
 	@echo "  make test-reading-routes - Combined backend+frontend reading-route checks"
@@ -210,6 +213,10 @@ verify-platform-bootstrap: up wait template-validate template index alias smoke-
 onboard-no-ingest: up wait migrate template-validate template index alias smoke-alias status
 	@echo "Onboarding complete (no ingest)."
 
+onboard-no-ingest-gpu: COMPOSE := docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu
+onboard-no-ingest-gpu: API_SERVICE := api_cuda
+onboard-no-ingest-gpu: onboard-no-ingest
+
 onboard: up wait migrate template-validate template index alias
 	@echo "Running subset ingest..."
 	$(MAKE) ingest
@@ -247,6 +254,13 @@ gpu-ingest:
 	  -e EMBEDDINGS_ENABLED=$(EMBEDDINGS_ENABLED) \
 	  -e EMBEDDING_DEVICE=cuda \
 	  ingest_cuda
+
+discovery-index:
+	@echo "Building discovery index at $(DISCOVERY_INDEX_OUT)"
+	$(COMPOSE) --profile ingest run --rm ingest \
+	  python -m app.ingest.build_index \
+	    --corpus-root /corpus/RELEASE \
+	    --out-json $(DISCOVERY_INDEX_OUT)
 
 test-unit-backend:
 	python -m pytest apps/api/tests -q

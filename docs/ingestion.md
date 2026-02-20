@@ -161,6 +161,14 @@ flowchart LR
 
 The pipeline walks the RELEASE directory tree and identifies candidate text files.
 
+For large/static corpora, you can precompute a discovery index and skip repeat tree scans:
+
+```bash
+make discovery-index
+```
+
+When present, ingest and eval planning auto-read `/artifacts/discovery/discovery_index.v1.json` (or `DISCOVERY_INDEX_PATH`) before falling back to metadata/filesystem discovery.
+
 **Typical filtering**
 
 * Ignore non-text artifacts

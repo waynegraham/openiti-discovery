@@ -28,10 +28,12 @@ This intentionally produces low/zero retrieval metrics until you replace placeho
 Use the planner to estimate `INGEST_WORK_LIMIT` for target line counts (Table Z style):
 
 ```bash
+make discovery-index
 make eval-corpus-plan EVAL_TARGET_LINES=1000000,5000000,20000000
 ```
 
 This writes `data/eval/output/corpus_plan.json` with recommended work limits based on actual line counts in discovery order.
+If `data/artifacts/discovery/discovery_index.v1.json` exists, planner discovery uses it instead of walking `RELEASE/data`.
 
 ## Additional Evaluation Utilities
 

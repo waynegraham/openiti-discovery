@@ -204,6 +204,14 @@ docker compose --profile ingest run --rm ingest
 docker compose --profile ingest run --rm -e EMBEDDINGS_ENABLED=true -e EMBEDDING_DEVICE=auto ingest
 ```
 
+For large corpora, precompute discovery once and reuse it:
+
+```bash
+make discovery-index
+```
+
+This writes `/artifacts/discovery/discovery_index.v1.json` (host: `data/artifacts/discovery/discovery_index.v1.json`), and ingest/eval discovery will auto-use it when present.
+
 ### GPU Ingest (Windows/Linux + NVIDIA)
 
 Use the CUDA-enabled image and profile (requires Docker Compose with `--gpus` support):
@@ -234,6 +242,7 @@ Ingest behavior is controlled via environment variables (see `.env.example` and 
 * `INGEST_WORK_LIMIT`: limit number of works (default is 200 when unset)
 * `CHUNK_TARGET_WORDS`: default 300
 * `SKIP_EXISTING`: `true` or `false` (default `true`; skips versions already marked `complete` in `ingest_state`)
+* `DISCOVERY_INDEX_PATH`: optional explicit JSON path for prebuilt discovery index (default auto-detects `metadata/discovery_index.v1.json` and `/artifacts/discovery/discovery_index.v1.json`)
 * `EMBEDDINGS_ENABLED`: `true` or `false`
 * `EMBEDDING_DEVICE`: `cpu` or `cuda`
 * `EMBEDDING_MODEL`: default multilingual MiniLM
