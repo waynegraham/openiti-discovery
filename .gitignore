@@ -3,3 +3,4 @@ hf_cache
 RELEASE
 __pycache__/
 .venv/
+*.log
