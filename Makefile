@@ -20,7 +20,7 @@ DISCOVERY_INDEX_OUT ?= /artifacts/discovery/discovery_index.v1.json
 # make ingest INGEST_WORK_LIMIT=200 EMBEDDING_DEVICE=cpu
 INGEST_WORK_LIMIT ?= 200
 INGEST_ONLY_PRI ?= true
-INGEST_LANGS ?= ar,en
+INGEST_LANGS ?= ar,per
 EMBEDDINGS_ENABLED ?= true
 EMBEDDING_DEVICE ?= cpu
 
@@ -34,7 +34,7 @@ define wait_http
 	echo "Timed out waiting for $(1)"; exit 1
 endef
 
-.PHONY: help up down reset logs ps \
+.PHONY: help up up-gpu down reset logs ps rebuild rebuild-gpu rebuild-all \
         wait migrate template-validate template index alias smoke-alias status \
         onboard onboard-no-ingest onboard-no-ingest-gpu verify-platform-bootstrap \
         ingest gpu-ingest discovery-index \
@@ -128,6 +128,10 @@ help:
 	@echo "  make status         - Show health of postgres/opensearch/qdrant and alias status"
 	@echo "  make reset          - docker compose down -v (DANGEROUS: deletes volumes)"
 	@echo "  make up             - Bring up core services (postgres/opensearch/qdrant/api/frontend)"
+	@echo "  make up-gpu         - Bring up GPU API stack detached (postgres/opensearch/qdrant/api_cuda)"
+	@echo "  make rebuild        - Rebuild docker images from docker-compose.yml"
+	@echo "  make rebuild-gpu    - Rebuild docker images including docker-compose.gpu.yml services"
+	@echo "  make rebuild-all    - Rebuild both base and GPU image sets"
 	@echo "  make down           - Bring down stack (keeps volumes)"
 	@echo "  make logs           - Tail logs"
 	@echo "  make ps             - Show containers"
@@ -135,6 +139,20 @@ help:
 
 up:
 	$(COMPOSE) up -d postgres opensearch qdrant $(API_SERVICE) frontend
+
+up-gpu:
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu up -d postgres opensearch qdrant api_cuda
+
+rebuild:
+	@echo "Rebuilding images from docker-compose.yml..."
+	$(COMPOSE) build --pull
+
+rebuild-gpu:
+	@echo "Rebuilding images from docker-compose.yml + docker-compose.gpu.yml..."
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.gpu.yml --profile gpu build --pull
+
+rebuild-all: rebuild rebuild-gpu
+	@echo "Base + GPU image rebuild complete."
 
 down:
 	$(COMPOSE) down

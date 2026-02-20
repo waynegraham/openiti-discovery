@@ -22,3 +22,11 @@ def test_configured_supported_languages_defaults_to_ar_en(monkeypatch):
 
 def test_normalize_language_values_deduplicates_and_normalizes():
     assert language.normalize_language_values(["ara", "ar", "eng", "zzz"]) == ["ar", "en", "unknown"]
+
+
+def test_infer_language_from_text_handles_openiti_filename_suffixes():
+    path = (
+        "data/0298HadiIlaHaqqYahya/0298HadiIlaHaqqYahya.RaddCalaMujbiraThani/"
+        "0298HadiIlaHaqqYahya.RaddCalaMujbiraThani.Zaydiyya0000076BK15-ara1.completed"
+    )
+    assert language.infer_language_from_text(path) == "ar"

@@ -12,7 +12,9 @@ from .settings import settings
 CANONICAL_LANGUAGES = ("ar", "en", "fa")
 UNKNOWN_LANGUAGE = "unknown"
 
-_LANG_TOKEN_RE = re.compile(r"[a-z]{2,3}(?:\d+)?(?:-[a-z0-9]{2,8})?")
+# Match language-like tokens only at non-alphanumeric boundaries so
+# filename chunks like "...BK15-ara1.completed" yield "ara1" (not "bk15-ara1").
+_LANG_TOKEN_RE = re.compile(r"(?<![a-z0-9])[a-z]{2,3}(?:\d+)?(?:-[a-z0-9]{2,8})?(?![a-z0-9])")
 
 
 def _repo_root() -> Path:
