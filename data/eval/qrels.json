@@ -1,18 +1,46 @@
 {
   "qrels": [
     {
-      "query_id": "Q1",
-      "passage_id": "REPLACE_CHUNK_ID_1",
-      "work_id": "REPLACE_WORK_ID_1",
-      "author_id": "REPLACE_AUTHOR_ID_1",
-      "relevance": 1
+      "query_id": "Q001",
+      "relevance": 1,
+      "passage_id": "TODO_CHUNK_Q001_A",
+      "work_id": "TODO_WORK_Q001",
+      "author_id": "TODO_AUTHOR_Q001"
     },
     {
-      "query_id": "Q2",
-      "passage_id": "REPLACE_CHUNK_ID_2",
-      "work_id": "REPLACE_WORK_ID_2",
-      "author_id": "REPLACE_AUTHOR_ID_2",
-      "relevance": 1
+      "query_id": "Q001",
+      "relevance": 1,
+      "passage_id": "TODO_CHUNK_Q001_B",
+      "work_id": "TODO_WORK_Q001",
+      "author_id": "TODO_AUTHOR_Q001"
+    },
+    {
+      "query_id": "Q002",
+      "relevance": 1,
+      "passage_id": "TODO_CHUNK_Q002_A",
+      "work_id": "TODO_WORK_Q002",
+      "author_id": "TODO_AUTHOR_Q002"
+    },
+    {
+      "query_id": "Q003",
+      "relevance": 1,
+      "passage_id": "TODO_CHUNK_Q003_A",
+      "work_id": "TODO_WORK_Q003",
+      "author_id": "TODO_AUTHOR_Q003"
+    },
+    {
+      "query_id": "Q004",
+      "relevance": 1,
+      "passage_id": "TODO_CHUNK_Q004_A",
+      "work_id": "TODO_WORK_Q004",
+      "author_id": "TODO_AUTHOR_Q004"
+    },
+    {
+      "query_id": "Q005",
+      "relevance": 1,
+      "passage_id": "TODO_CHUNK_Q005_A",
+      "work_id": "TODO_WORK_Q005",
+      "author_id": "TODO_AUTHOR_Q005"
     }
   ]
 }

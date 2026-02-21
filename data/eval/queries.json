@@ -1,39 +1,401 @@
 {
   "queries": [
     {
-      "id": "Q1",
+      "id": "Q001",
       "category": "known_entity",
       "text": "الشافعي",
-      "variants": ["الشافعى"],
-      "expansions": ["محمد بن إدريس الشافعي"]
+      "variants": [
+        "الإمام"
+      ],
+      "expansions": [
+        "صاحب الرسالة"
+      ]
     },
     {
-      "id": "Q2",
+      "id": "Q002",
+      "category": "known_entity",
+      "text": "مالك بن أنس",
+      "variants": [
+        "مالك",
+        "إمام دار الهجرة"
+      ],
+      "expansions": [
+        "إمام دار الهجرة"
+      ]
+    },
+    {
+      "id": "Q003",
+      "category": "known_entity",
+      "text": "أرسطو",
+      "variants": [
+        "أرسطاطاليس",
+        "أرسطو"
+      ],
+      "expansions": [
+        "المعلم الأول"
+      ]
+    },
+    {
+      "id": "Q004",
+      "category": "known_entity",
+      "text": "جلال الدين الرومي",
+      "variants": [
+        "جلال الدين",
+        "مولانا"
+      ],
+      "expansions": [
+        "خداوندگار"
+      ]
+    },
+    {
+      "id": "Q005",
+      "category": "known_entity",
+      "text": "محمد",
+      "variants": [
+        "النبي",
+        "الرسول"
+      ],
+      "expansions": [
+        "الصادق الأمين"
+      ]
+    },
+    {
+      "id": "Q006",
+      "category": "known_entity",
+      "text": "ابن سينا",
+      "variants": [
+        "الشيخ الرئيس"
+      ],
+      "expansions": [
+        "أبو علي الحسين بن عبد الله بن سينا"
+      ]
+    },
+    {
+      "id": "Q007",
+      "category": "known_entity",
+      "text": "ابن خلدون",
+      "variants": [
+        "الحضرمي"
+      ],
+      "expansions": [
+        "ولي الدين عبد الرحمن بن محمد بن خلدون"
+      ]
+    },
+    {
+      "id": "Q008",
+      "category": "known_entity",
+      "text": "البيروني",
+      "variants": [
+        "الخوارزمي"
+      ],
+      "expansions": [
+        "أبو الريحان محمد بن أحمد البيروني"
+      ]
+    },
+    {
+      "id": "Q009",
+      "category": "known_entity",
+      "text": "البخاري",
+      "variants": [
+        "صاحب الصحيح"
+      ],
+      "expansions": [
+        "أبو عبد الله محمد بن إسماعيل البخاري"
+      ]
+    },
+    {
+      "id": "Q010",
+      "category": "known_entity",
+      "text": "فردوسي",
+      "variants": [
+        "طوسي"
+      ],
+      "expansions": [
+        "حكيم أبو القاسم منصور بن حسن فردوسي"
+      ]
+    },
+    {
+      "id": "Q015",
+      "category": "known_entity",
+      "text": "فارابي",
+      "variants": [
+        "الفارابي"
+      ],
+      "expansions": [
+        "أبو نصر محمد الفارابي"
+      ]
+    },
+    {
+      "id": "Q016",
+      "category": "known_entity",
+      "text": "السرخسي",
+      "variants": [
+        "سرخسی"
+      ],
+      "expansions": [
+        "شمس‌ الأئمه سرخسی"
+      ]
+    },
+    {
+      "id": "Q017",
+      "category": "known_entity",
+      "text": "گرگانی",
+      "variants": [
+        "جرجاني"
+      ],
+      "expansions": [
+        "إسماعيل بن الحسن الجرجاني"
+      ]
+    },
+    {
+      "id": "Q018",
+      "category": "known_entity",
+      "text": "خواجه نصیرالدین",
+      "variants": [
+        "الطوسي"
+      ],
+      "expansions": [
+        "نصير الدين محمد بن محمد الطوسي"
+      ]
+    },
+    {
+      "id": "Q019",
+      "category": "known_entity",
+      "text": "همدانی",
+      "variants": [
+        "الهمذاني"
+      ],
+      "expansions": [
+        "رشيد الدين فضل الله الهمذاني"
+      ]
+    },
+    {
+      "id": "Q020",
+      "category": "known_entity",
+      "text": "كريم",
+      "variants": [
+        "السخي"
+      ],
+      "expansions": [
+        "كريم بن إبراهيم"
+      ]
+    },
+    {
+      "id": "Q021",
+      "category": "known_entity",
+      "text": "أحمد",
+      "variants": [
+        "الأكثر حمداً"
+      ],
+      "expansions": [
+        "إمام أهل السنة"
+      ]
+    },
+    {
+      "id": "Q022",
+      "category": "known_entity",
+      "text": "حمد",
+      "variants": [
+        "شكر"
+      ],
+      "expansions": [
+        "حمد بن محمد"
+      ]
+    },
+    {
+      "id": "Q023",
+      "category": "known_entity",
+      "text": "نور",
+      "variants": [
+        "ضياء"
+      ],
+      "expansions": [
+        "نور الدين"
+      ]
+    },
+    {
+      "id": "Q024",
       "category": "variant_orthography",
-      "text": "مساله",
-      "variants": ["مسألة", "مساله"],
-      "expansions": []
+      "text": "تقي الدين",
+      "variants": [
+        "تقى الدين"
+      ],
+      "expansions": [
+        "تقي الدين"
+      ]
     },
     {
-      "id": "Q3",
+      "id": "Q025",
+      "category": "variant_orthography",
+      "text": "مسألة",
+      "variants": [
+        "مسأله",
+        "مسئله",
+        "مسألة",
+        "مسألہ",
+        "مسألۀ"
+      ],
+      "expansions": [
+        "مسألة"
+      ]
+    },
+    {
+      "id": "Q026",
+      "category": "variant_orthography",
+      "text": "سُئِلَ",
+      "variants": [
+        "سئل"
+      ],
+      "expansions": [
+        "استنطق",
+        "أجيب"
+      ]
+    },
+    {
+      "id": "Q027",
+      "category": "variant_orthography",
+      "text": "می‌رود",
+      "variants": [
+        "می رود"
+      ],
+      "expansions": [
+        "می‌رود"
+      ]
+    },
+    {
+      "id": "Q028",
+      "category": "variant_orthography",
+      "text": "الرحيـــم",
+      "variants": [
+        "الرحيم"
+      ],
+      "expansions": [
+        "الرحمان",
+        "الخالق"
+      ]
+    },
+    {
+      "id": "Q029",
+      "category": "variant_orthography",
+      "text": "الإسلام",
+      "variants": [
+        "اﻹسلام"
+      ],
+      "expansions": [
+        "الإسلام"
+      ]
+    },
+    {
+      "id": "Q030",
       "category": "conceptual_thematic",
-      "text": "اداب العالم والمتعلم",
-      "variants": [],
-      "expansions": ["آداب", "تعليم"]
+      "text": "الزهد",
+      "variants": [
+        "التقشف"
+      ],
+      "expansions": [
+        "ترك الدنيا",
+        "لبس الخشن"
+      ]
     },
     {
-      "id": "Q4",
-      "category": "cross_textual_reuse",
-      "text": "اطلبوا العلم ولو بالصين",
-      "variants": [],
-      "expansions": ["طلب العلم"]
+      "id": "Q031",
+      "category": "conceptual_thematic",
+      "text": "العدل",
+      "variants": [
+        "القسط"
+      ],
+      "expansions": [
+        "ميزان",
+        "سياسة"
+      ]
     },
     {
-      "id": "Q5",
+      "id": "Q032",
+      "category": "conceptual_thematic",
+      "text": "الفقر",
+      "variants": [
+        "العوز"
+      ],
+      "expansions": [
+        "فاقة",
+        "المسكنة"
+      ]
+    },
+    {
+      "id": "Q033",
+      "category": "conceptual_thematic",
+      "text": "العلم",
+      "variants": [
+        "المعرفة"
+      ],
+      "expansions": [
+        "الحكمة",
+        "المنطق"
+      ]
+    },
+    {
+      "id": "Q034",
+      "category": "conceptual_thematic",
+      "text": "العدل",
+      "variants": [
+        "القسط"
+      ],
+      "expansions": [
+        "داد"
+      ]
+    },
+    {
+      "id": "Q035",
+      "category": "conceptual_thematic",
+      "text": "عقل",
+      "variants": [
+        "العقل"
+      ],
+      "expansions": [
+        "خرد"
+      ]
+    },
+    {
+      "id": "Q036",
       "category": "metadata_poor",
-      "text": "البيعة والشرعية",
-      "variants": [],
-      "expansions": ["الخلافة", "السلطة"]
+      "text": "بيع الكالئ بالكالئ",
+      "variants": [
+        "بيع الدين"
+      ],
+      "expansions": [
+        "نهي عن الكالئ"
+      ]
+    },
+    {
+      "id": "Q037",
+      "category": "metadata_poor",
+      "text": "پاى‌مردى",
+      "variants": [
+        "وساطت"
+      ],
+      "expansions": [
+        "پایمردی"
+      ]
+    },
+    {
+      "id": "Q038",
+      "category": "metadata_poor",
+      "text": "تربيع وتدوير",
+      "variants": [
+        "التربيع"
+      ],
+      "expansions": [
+        "التدوير"
+      ]
+    },
+    {
+      "id": "Q039",
+      "category": "metadata_poor",
+      "text": "أحكام النبض",
+      "variants": [
+        "علم النبض"
+      ],
+      "expansions": []
     }
   ]
 }

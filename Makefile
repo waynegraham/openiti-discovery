@@ -63,6 +63,10 @@ EVAL_PRI_ONLY ?= true
 EVAL_SCAFFOLD_PER_CATEGORY ?= 4
 EVAL_FORMS_QUERIES_CSV ?= /app/data/eval/forms/queries_form.csv
 EVAL_FORMS_QRELS_CSV ?= /app/data/eval/forms/qrels_form.csv
+EVAL_FORMS_QUERIES_CSV_HOST ?= data/eval/forms/queries_form.csv
+EVAL_FORMS_QRELS_CSV_HOST ?= data/eval/forms/qrels_form.csv
+EVAL_QUERIES_HOST ?= data/eval/queries.json
+EVAL_QRELS_HOST ?= data/eval/qrels.json
 EVAL_TARGET_LINES ?= 1000000,5000000,20000000
 EVAL_SUBSET_MANIFEST ?= /app/data/eval/subsets.sample.json
 SYSTEM_LANGS ?= ar
@@ -437,12 +441,17 @@ eval-scaffold:
 	  --per-category $(EVAL_SCAFFOLD_PER_CATEGORY)
 
 eval-import-forms:
+	$(COMPOSE) exec -T $(API_SERVICE) sh -lc "mkdir -p /app/data/eval/forms /app/data/eval"
+	$(COMPOSE) cp $(EVAL_FORMS_QUERIES_CSV_HOST) $(API_SERVICE):$(EVAL_FORMS_QUERIES_CSV)
+	$(COMPOSE) cp $(EVAL_FORMS_QRELS_CSV_HOST) $(API_SERVICE):$(EVAL_FORMS_QRELS_CSV)
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.forms_import \
 	  --queries-csv $(EVAL_FORMS_QUERIES_CSV) \
 	  --qrels-csv $(EVAL_FORMS_QRELS_CSV) \
 	  --out-queries /app/data/eval/queries.json \
 	  --out-qrels /app/data/eval/qrels.json \
 	  --strict
+	$(COMPOSE) cp $(API_SERVICE):/app/data/eval/queries.json $(EVAL_QUERIES_HOST)
+	$(COMPOSE) cp $(API_SERVICE):/app/data/eval/qrels.json $(EVAL_QRELS_HOST)
 
 eval-corpus-plan:
 	$(COMPOSE) exec -T $(API_SERVICE) python -m app.eval.corpus_plan \

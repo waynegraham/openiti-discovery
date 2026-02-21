@@ -1,6 +1,36 @@
-query_id,category,query_text,variants_pipe,expansions_pipe,notes
-Q001,known_entity,الشافعي,الشافعى|محمد بن ادريس الشافعي,محمد بن إدريس الشافعي|الإمام الشافعي,
-Q002,variant_orthography,مساله,مسألة|مساله,مسائل الفقه,
-Q003,conceptual_thematic,اداب العالم والمتعلم,,تعليم|آداب,
-Q004,cross_textual_reuse,اطلبوا العلم ولو بالصين,,طلب العلم,
-Q005,metadata_poor,البيعة والشرعية,,الخلافة|السلطة,
+query_id,category,query_text,variants_pipe,expansion_pipe,notes
+1,known_entity,الشافعي,الإمام,صاحب الرسالة,Does our vector search recognize the proximity of these terms even though they may share zero identical letters?
+2,known_entity,مالك بن أنس,مالك|إمام دار الهجرة,إمام دار الهجرة,Tests the expansion from a proper name to a geographic/status title in Maliki texts.
+3,known_entity,أرسطو,أرسطاطاليس|أرسطو,المعلم الأول,Tests the framework's ability to link a Greek-origin name to its Arabic philosophical title.
+4,known_entity,جلال الدين الرومي,جلال الدين|مولانا,خداوندگار,(Persian) Tests the transition from a modern/common descriptor to a classical Persian honorific.
+5,known_entity,محمد,النبي|الرسول,الصادق الأمين,Tests the recognition of prophetic epithets that function as nominal substitutes in hagiography.
+6,known_entity,ابن سينا,الشيخ الرئيس,أبو علي الحسين بن عبد الله بن سينا,Baseline test for formal/informal identity.
+7,known_entity,ابن خلدون,الحضرمي,ولي الدين عبد الرحمن بن محمد بن خلدون,Tests lineage-based expansion.
+8,known_entity,البيروني,الخوارزمي,أبو الريحان محمد بن أحمد البيروني,Tests kunya + ism + nisba mapping.
+9,known_entity,البخاري,صاحب الصحيح,أبو عبد الله محمد بن إسماعيل البخاري,Tests disambiguation of common ism strings.
+10,known_entity,فردوسي,طوسي,حكيم أبو القاسم منصور بن حسن فردوسي,(Persian) Tests honorific title + formal name.
+15,known_entity,فارابي,الفارابي,أبو نصر محمد الفارابي,Baseline for Persian vs. Arabic article normalization.
+16,known_entity,السرخسي,سرخسی,شمس‌ الأئمه سرخسی,Tests Arabic nisba vs. Persian honorific title.
+17,known_entity,گرگانی,جرجاني,إسماعيل بن الحسن الجرجاني,Tests the Gaf (گ) → Jim (ج) phonetic/orthographic shift.
+18,known_entity,خواجه نصیرالدین,الطوسي,نصير الدين محمد بن محمد الطوسي,Tests the Persian Khwaja title against the Arabic definite article.
+19,known_entity,همدانی,الهمذاني,رشيد الدين فضل الله الهمذاني,"Tests the Dal (د) → Dhal (ذ) variation and ""P"" to ""B"" shifts."
+20,known_entity,كريم,السخي,كريم بن إبراهيم,"Tests ""Generous"" (adj) vs. ""Karim"" (proper name)."
+21,known_entity,أحمد,الأكثر حمداً,إمام أهل السنة,"Tests ""Most Praised"" (adj) vs. Ahmad b. Hanbal."
+22,known_entity,حمد,شكر,حمد بن محمد,"Tests ""He praised"" (verb) vs. ""Hamad"" (noun)."
+23,known_entity,نور,ضياء,نور الدين,"Tests ""Light"" (noun) vs. ""Nur al-Din"" (title/person)."
+24,variant_orthography,تقي الدين,تقى الدين,تقي الدين,Tests dot-sensitivity in final Ya vs. Maqsura.
+25,variant_orthography,مسألة,مسأله|مسئله|مسألة|مسألہ|مسألۀ,مسألة,Tests final Ta Marbuta (ة) vs He (ه). Must also include normalization for Persian Teh Marbuta (ۀ) and He Goal (ہ)
+26,variant_orthography,سُئِلَ,سئل,استنطق|أجيب,Tests Hamza-seat invariance.
+27,variant_orthography,می‌رود,می رود,می‌رود,Tests ZWNJ (\u200C) handling in Persian verbal prefixes.
+28,variant_orthography,الرحيـــم,الرحيم,الرحمان|الخالق,"Tests robustness against the ""Kashida"" (ـ). OCR often inserts these to justify lines; the search must ignore them entirely."
+29,variant_orthography,الإسلام,اﻹسلام,الإسلام,Tests Unicode normalization of the Lam-Alif ligature.
+30,conceptual_thematic,الزهد,التقشف,ترك الدنيا|لبس الخشن,Tests definition-to-concept mapping (Zero-lexical overlap).
+31,conceptual_thematic,العدل,القسط,ميزان|سياسة,Benchmark for NDCG; distinguish theory from incidental labels.
+32,conceptual_thematic,الفقر,العوز,فاقة|المسكنة,"Measures precision; must not collapse into ""Zakat/Charity."""
+33,conceptual_thematic,العلم,المعرفة,الحكمة|المنطق,"Tests the breadth of the ""Knowledge"" category across disciplines."
+34,conceptual_thematic,العدل,القسط,داد,"Tests if searching for the Arabic concept of Justice retrieves Persian ""Mirror for Princes"" texts using 'Dad' (داد)."
+35,conceptual_thematic,عقل,العقل,خرد,Tests if the vector space maps the Arabic 'Aql' (عقل) to its Persian equivalent 'Kherad' (خرد). Essential for cross-textual research in bilingual wisdom literature.
+36,metadata_poor,بيع الكالئ بالكالئ,بيع الدين,نهي عن الكالئ,Tests if rare legal terms surface in unk_id texts.
+37,metadata_poor,پاى‌مردى,وساطت,پایمردی,Tests if regional Persian idioms surface without geo tags.
+38,metadata_poor,تربيع وتدوير,التربيع,التدوير,"Tests if content signal outweighs ""Famous Author"" weighting."
+39,metadata_poor,أحكام النبض,علم النبض,,"Tests if searching for an Arabic concept retrieves relevant Persian philosophical or ""Mirror for Princes"" (Siyasatnama) texts."

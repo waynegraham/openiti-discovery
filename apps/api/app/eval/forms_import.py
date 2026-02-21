@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,18 @@ def _split_pipe(value: str) -> list[str]:
     return [part.strip() for part in value.split("|") if part.strip()]
 
 
+def _normalize_query_id(value: str) -> str:
+    raw = str(value).strip()
+    if not raw:
+        return ""
+    if re.fullmatch(r"\d+", raw):
+        return f"Q{int(raw):03d}"
+    m = re.fullmatch(r"[Qq]\s*0*(\d+)", raw)
+    if m:
+        return f"Q{int(m.group(1)):03d}"
+    return raw
+
+
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as f:
         return list(csv.DictReader(f))
@@ -33,11 +46,14 @@ def _load_queries(path: Path, strict: bool) -> list[dict[str, Any]]:
     seen_ids: set[str] = set()
 
     for i, row in enumerate(rows, start=2):
-        query_id = str(row.get("query_id", "")).strip()
+        query_id = _normalize_query_id(row.get("query_id", ""))
         category = str(row.get("category", "")).strip()
         query_text = str(row.get("query_text", "")).strip()
         variants = _split_pipe(str(row.get("variants_pipe", "")))
-        expansions = _split_pipe(str(row.get("expansions_pipe", "")))
+        expansions_raw = str(row.get("expansions_pipe", "")).strip()
+        if not expansions_raw:
+            expansions_raw = str(row.get("expansion_pipe", "")).strip()
+        expansions = _split_pipe(expansions_raw)
 
         if not query_id:
             if strict:
@@ -75,7 +91,7 @@ def _load_qrels(path: Path, valid_query_ids: set[str], strict: bool) -> list[dic
     out: list[dict[str, Any]] = []
 
     for i, row in enumerate(rows, start=2):
-        query_id = str(row.get("query_id", "")).strip()
+        query_id = _normalize_query_id(row.get("query_id", ""))
         passage_id = str(row.get("passage_id", "")).strip()
         work_id = str(row.get("work_id", "")).strip()
         author_id = str(row.get("author_id", "")).strip()
