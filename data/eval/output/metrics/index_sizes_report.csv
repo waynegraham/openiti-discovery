@@ -1,7 +1,7 @@
 section,name,value,unit,extra
 opensearch,target,openiti_chunks,,
-opensearch,index_size_bytes:openiti_chunks_v1,16065234841,bytes,14.96 GB
-opensearch,total_size_bytes,16065234841,bytes,14.96 GB
+opensearch,index_size_bytes:openiti_chunks_v1,16065254474,bytes,14.96 GB
+opensearch,total_size_bytes,16065254474,bytes,14.96 GB
 qdrant,collection,openiti_chunks,,
 qdrant,points_count,19173979,count,
 qdrant,vectors_count,19620225,count,
