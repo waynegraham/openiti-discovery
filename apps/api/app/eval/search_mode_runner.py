@@ -107,13 +107,41 @@ def run_mode(
             if langs:
                 params["langs"] = ",".join(langs)
 
-            t0 = time.perf_counter()
-            res = client.get("/search", params=params)
-            elapsed_ms = (time.perf_counter() - t0) * 1000.0
-            query_latencies_ms.append(elapsed_ms)
+            res = None
+            elapsed_ms = 0.0
+            last_exc: Exception | None = None
+            for attempt in range(1, 5):
+                try:
+                    t0 = time.perf_counter()
+                    res = client.get("/search", params=params)
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    if res.status_code == 200:
+                        break
+                    if res.status_code in (429, 502, 503, 504) and attempt < 4:
+                        time.sleep(float(attempt))
+                        continue
+                    body_preview = (res.text or "").strip().replace("\n", " ")
+                    if len(body_preview) > 300:
+                        body_preview = body_preview[:300] + "..."
+                    raise SystemExit(
+                        f"{config_name}: /search returned HTTP {res.status_code} for query {item.qid}; body={body_preview}"
+                    )
+                except Exception as exc:
+                    last_exc = exc
+                    if attempt >= 4:
+                        raise SystemExit(
+                            f"{config_name}: /search request failed for query {item.qid}: {type(exc).__name__}: {exc}"
+                        )
+                    time.sleep(float(attempt))
 
-            if res.status_code != 200:
-                raise SystemExit(f"{config_name}: /search returned HTTP {res.status_code} for query {item.qid}")
+            if res is None:
+                if last_exc is not None:
+                    raise SystemExit(
+                        f"{config_name}: /search request failed for query {item.qid}: {type(last_exc).__name__}: {last_exc}"
+                    )
+                raise SystemExit(f"{config_name}: /search did not return a response for query {item.qid}")
+
+            query_latencies_ms.append(elapsed_ms)
 
             body = res.json()
             effective_mode = str(body.get("effective_mode") or "unknown")

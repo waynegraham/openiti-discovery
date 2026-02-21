@@ -122,6 +122,7 @@ def test_restart_resume_matches_uninterrupted(monkeypatch):
     monkeypatch.setattr(ingest_run, "upsert_author", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(ingest_run, "upsert_work", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(ingest_run, "upsert_version", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "get_version_row", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(ingest_run, "upsert_chunks_batch", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(ingest_run, "set_chunk_links", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(ingest_run, "get_ingest_state", fake_get_ingest_state)
@@ -160,3 +161,141 @@ def test_restart_resume_matches_uninterrupted(monkeypatch):
     resumed_final = set(sent_ids["resume_first"] + sent_ids["resume_second"])
     control_final = set(sent_ids["control"])
     assert resumed_final == control_final
+
+
+def test_ingest_regression_embeddings_do_not_backtrack_to_bm25(monkeypatch):
+    text = ingest_run.DiscoveredText(
+        author_id="a1",
+        work_id="a1.w1",
+        version_id="a1.w1.v1-ara1",
+        repo_path="data/a1/w1/v1-ara1.mARkdown",
+        abs_path=ingest_run.Path("fake.mARkdown"),
+        is_pri=True,
+        lang="ara",
+    )
+
+    state: dict[str, ingest_run.IngestStateRow] = {}
+    status_history: list[str] = []
+
+    def fake_get_ingest_state(_engine, version_id: str):
+        return state.get(version_id)
+
+    def fake_set_ingest_state(_engine, version_id: str, status: str, *, last_chunk_index=None, error_message=None):
+        current = state.get(version_id)
+        current_status = current.status if current else None
+        assert ingest_run.is_valid_ingest_transition(current_status, status)
+        next_last_chunk = last_chunk_index if last_chunk_index is not None else (current.last_chunk_index if current else None)
+        state[version_id] = ingest_run.IngestStateRow(
+            version_id=version_id,
+            status=status,
+            last_chunk_index=next_last_chunk,
+        )
+        status_history.append(status)
+
+    monkeypatch.setattr(ingest_run, "SentenceTransformer", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(ingest_run, "ensure_qdrant_collection", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "_embed_and_upsert", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "get_engine", lambda: object())
+    monkeypatch.setattr(ingest_run, "ensure_write_index_target", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "_load_curated_tags", lambda: set())
+    monkeypatch.setattr(ingest_run, "load_metadata", lambda *_args, **_kwargs: ({}, {}))
+    monkeypatch.setattr(ingest_run, "discover_200_pri_arabic", lambda *_args, **_kwargs: [text])
+    monkeypatch.setattr(ingest_run, "upsert_author", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "upsert_work", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "upsert_version", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "get_version_row", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "upsert_chunks_batch", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "set_chunk_links", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "get_ingest_state", fake_get_ingest_state)
+    monkeypatch.setattr(ingest_run, "set_ingest_state", fake_set_ingest_state)
+    monkeypatch.setattr(ingest_run, "os_bulk_index", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "sha256_file", lambda *_args, **_kwargs: "checksum")
+    monkeypatch.setattr(ingest_run, "read_text_file", lambda *_args, **_kwargs: "######OpenITI#\nalpha beta gamma delta")
+    monkeypatch.setattr(ingest_run, "normalize_arabic_script", lambda text: " ".join(text.split()))
+    monkeypatch.setattr(ingest_run, "tqdm", lambda x, **_kwargs: x)
+
+    monkeypatch.setattr(ingest_run, "EMBEDDINGS_ENABLED", True)
+    monkeypatch.setattr(ingest_run, "SKIP_EXISTING", False)
+    monkeypatch.setattr(ingest_run, "CHUNK_TARGET_WORDS", 1)
+    monkeypatch.setattr(ingest_run, "CHUNK_MAX_OVERLAP_WORDS", 0)
+    monkeypatch.setattr(ingest_run, "OS_BULK_BATCH", 1)
+
+    monkeypatch.setenv("CORPUS_ROOT", ".")
+
+    ingest_run.run()
+
+    assert state[text.version_id].status == "complete"
+    embedded_seen = False
+    for status in status_history:
+        if status == "embedded":
+            embedded_seen = True
+        if embedded_seen:
+            assert status != "indexed_bm25"
+
+
+def test_ingest_regression_skip_invalid_parsed_to_discovered(monkeypatch):
+    text = ingest_run.DiscoveredText(
+        author_id="a1",
+        work_id="a1.w1",
+        version_id="a1.w1.v1-ara1",
+        repo_path="data/a1/w1/v1-ara1.mARkdown",
+        abs_path=ingest_run.Path("fake.mARkdown"),
+        is_pri=True,
+        lang="ara",
+    )
+
+    state: dict[str, ingest_run.IngestStateRow] = {
+        text.version_id: ingest_run.IngestStateRow(
+            version_id=text.version_id,
+            status="parsed",
+            last_chunk_index=0,
+        )
+    }
+    status_history: list[str] = []
+
+    def fake_get_ingest_state(_engine, version_id: str):
+        return state.get(version_id)
+
+    def fake_set_ingest_state(_engine, version_id: str, status: str, *, last_chunk_index=None, error_message=None):
+        current = state.get(version_id)
+        current_status = current.status if current else None
+        assert ingest_run.is_valid_ingest_transition(current_status, status)
+        next_last_chunk = last_chunk_index if last_chunk_index is not None else (current.last_chunk_index if current else None)
+        state[version_id] = ingest_run.IngestStateRow(
+            version_id=version_id,
+            status=status,
+            last_chunk_index=next_last_chunk,
+        )
+        status_history.append(status)
+
+    monkeypatch.setattr(ingest_run, "get_engine", lambda: object())
+    monkeypatch.setattr(ingest_run, "ensure_write_index_target", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "_load_curated_tags", lambda: set())
+    monkeypatch.setattr(ingest_run, "load_metadata", lambda *_args, **_kwargs: ({}, {}))
+    monkeypatch.setattr(ingest_run, "discover_200_pri_arabic", lambda *_args, **_kwargs: [text])
+    monkeypatch.setattr(ingest_run, "upsert_author", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "upsert_work", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "upsert_version", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "get_version_row", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "upsert_chunks_batch", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "set_chunk_links", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "get_ingest_state", fake_get_ingest_state)
+    monkeypatch.setattr(ingest_run, "set_ingest_state", fake_set_ingest_state)
+    monkeypatch.setattr(ingest_run, "os_bulk_index", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(ingest_run, "sha256_file", lambda *_args, **_kwargs: "checksum")
+    monkeypatch.setattr(ingest_run, "read_text_file", lambda *_args, **_kwargs: "######OpenITI#\nalpha beta")
+    monkeypatch.setattr(ingest_run, "normalize_arabic_script", lambda text: " ".join(text.split()))
+    monkeypatch.setattr(ingest_run, "tqdm", lambda x, **_kwargs: x)
+
+    monkeypatch.setattr(ingest_run, "EMBEDDINGS_ENABLED", False)
+    monkeypatch.setattr(ingest_run, "SKIP_EXISTING", True)
+    monkeypatch.setattr(ingest_run, "CHUNK_TARGET_WORDS", 1)
+    monkeypatch.setattr(ingest_run, "CHUNK_MAX_OVERLAP_WORDS", 0)
+    monkeypatch.setattr(ingest_run, "OS_BULK_BATCH", 1)
+
+    monkeypatch.setenv("CORPUS_ROOT", ".")
+
+    ingest_run.run()
+
+    assert state[text.version_id].status == "complete"
+    assert "discovered" not in status_history

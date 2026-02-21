@@ -197,10 +197,28 @@ index:
 
 alias:
 	@echo "Ensuring alias write target: $(OS_ALIAS) -> $(OS_INDEX)"
-	# Clear alias from previous versioned indices, then mark this one as the sole write index.
-	curl -fsS -X POST "$(OS_URL)/_aliases" \
+	@echo "Clearing read-only-allow-delete block on target indices (if set)..."
+	@curl -fsS -X PUT "$(OS_URL)/openiti_chunks_v*/_settings" \
 	  -H "Content-Type: application/json" \
-	  -d '{"actions":[{"remove":{"index":"openiti_chunks_v*","alias":"'"$(OS_ALIAS)"'","must_exist":false}},{"add":{"index":"'"$(OS_INDEX)"'","alias":"'"$(OS_ALIAS)"'","is_write_index":true}}]}' >/dev/null
+	  -d '{"index.blocks.read_only_allow_delete":null}' >/dev/null || true
+	# Clear alias from previous versioned indices, then mark this one as the sole write index.
+	@for i in $$(seq 1 30); do \
+		HTTP_CODE="$$(curl -sS -o /dev/null -w "%{http_code}" -X POST "$(OS_URL)/_aliases" \
+		  -H "Content-Type: application/json" \
+		  -d '{"actions":[{"remove":{"index":"openiti_chunks_v*","alias":"'"$(OS_ALIAS)"'","must_exist":false}},{"add":{"index":"'"$(OS_INDEX)"'","alias":"'"$(OS_ALIAS)"'","is_write_index":true}}]}')"; \
+		if [ "$$HTTP_CODE" = "200" ]; then \
+			break; \
+		fi; \
+		if [ "$$HTTP_CODE" != "429" ]; then \
+			echo "Alias ensure failed with HTTP $$HTTP_CODE"; \
+			exit 1; \
+		fi; \
+		if [ "$$i" -eq 30 ]; then \
+			echo "Alias ensure timed out after retries (last HTTP $$HTTP_CODE)"; \
+			exit 1; \
+		fi; \
+		sleep 2; \
+	done
 	@echo "Alias ensured."
 
 smoke-alias:

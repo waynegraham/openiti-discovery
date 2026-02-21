@@ -4,18 +4,18 @@
     "resolved_indices": [
       {
         "index": "openiti_chunks_v1",
-        "size_bytes": 3199695338,
-        "size_human": "2.98 GB"
+        "size_bytes": 16065234841,
+        "size_human": "14.96 GB"
       }
     ],
-    "total_size_bytes": 3199695338,
-    "total_size_human": "2.98 GB"
+    "total_size_bytes": 16065234841,
+    "total_size_human": "14.96 GB"
   },
   "qdrant": {
     "collection": "openiti_chunks",
-    "points_count": 563588,
-    "vectors_count": 560853,
-    "segments_count": 6,
+    "points_count": 19173979,
+    "vectors_count": 19620225,
+    "segments_count": 16,
     "disk_data_size_bytes": 0,
     "disk_data_size_human": "0 B",
     "ram_data_size_bytes": 0,

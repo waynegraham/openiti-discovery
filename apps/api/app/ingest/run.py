@@ -7,6 +7,7 @@ import csv
 import json
 import hashlib
 import logging
+from collections import Counter
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
@@ -1519,6 +1520,49 @@ def run() -> None:
         "failed": 0,
         "reprocessed": 0,
     }
+    invalid_transition_counts: Counter[str] = Counter()
+
+    def checkpoint_state(
+        version_id: str,
+        status: str,
+        *,
+        last_chunk_index: int | None = None,
+        error_message: str | None = None,
+    ) -> bool:
+        existing = get_ingest_state(engine, version_id)
+        current_status = existing.status if existing is not None else None
+        if not is_valid_ingest_transition(current_status, status):
+            transition_key = f"{current_status or '<none>'}->{status}"
+            invalid_transition_counts[transition_key] += 1
+            LOG.warning(
+                "Skipping invalid ingest_state transition for version_id=%s: %s -> %s",
+                version_id,
+                current_status if current_status is not None else "<none>",
+                status,
+            )
+            return False
+        try:
+            set_ingest_state(
+                engine,
+                version_id,
+                status,
+                last_chunk_index=last_chunk_index,
+                error_message=error_message,
+            )
+            return True
+        except RuntimeError as exc:
+            msg = str(exc)
+            if "Invalid ingest_state transition for" not in msg:
+                raise
+            transition_part = msg.split(": ", 1)[-1]
+            transition_key = transition_part.replace(" -> ", "->")
+            invalid_transition_counts[transition_key] += 1
+            LOG.warning(
+                "Skipping invalid ingest_state transition detected at write time for version_id=%s: %s",
+                version_id,
+                transition_part,
+            )
+            return False
 
     # Process each text end-to-end
     for t in tqdm(texts, desc="Ingest versions", unit="version"):
@@ -1620,7 +1664,7 @@ def run() -> None:
                     run_stats["reprocessed"] += 1
 
             if decision.start_chunk_index == 0 or (existing_state is not None and existing_state.status == "failed"):
-                set_ingest_state(engine, t.version_id, "discovered")
+                checkpoint_state(t.version_id, "discovered")
             else:
                 LOG.info(
                     "Resuming version_id=%s from chunk_index=%d (%s)",
@@ -1633,6 +1677,10 @@ def run() -> None:
                 and existing_state is not None
                 and existing_state.status == "embedded"
             )
+            # After we have successfully checkpointed "embedded" in this run for
+            # this version, never emit "indexed_bm25" again to avoid backward
+            # transitions on subsequent flushes.
+            can_checkpoint_bm25 = checkpoint_bm25
 
             raw = read_text_file(t.abs_path)
             checksum = sha256_file(t.abs_path)
@@ -1651,7 +1699,7 @@ def run() -> None:
                 metadata=version_meta,
             )
             if decision.start_chunk_index == 0:
-                set_ingest_state(engine, t.version_id, "parsed")
+                checkpoint_state(t.version_id, "parsed")
 
             chunk_plan = build_chunk_plan(
                 raw,
@@ -1659,7 +1707,7 @@ def run() -> None:
                 overlap_words=CHUNK_MAX_OVERLAP_WORDS,
             )
             if not chunk_plan:
-                set_ingest_state(engine, t.version_id, "failed", error_message="empty text after normalization")
+                checkpoint_state(t.version_id, "failed", error_message="empty text after normalization")
                 continue
 
             chunk_rows: List[dict] = []
@@ -1734,12 +1782,23 @@ def run() -> None:
                 if len(chunk_rows) >= OS_BULK_BATCH:
                     upsert_chunks_batch(engine, chunk_rows)
                     os_bulk_index(os_docs)
-                    if checkpoint_bm25:
-                        set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
+                    if can_checkpoint_bm25:
+                        indexed_ok = checkpoint_state(
+                            t.version_id,
+                            "indexed_bm25",
+                            last_chunk_index=chunk_rows[-1]["chunk_index"],
+                        )
+                        if not indexed_ok:
+                            can_checkpoint_bm25 = False
 
                     if EMBEDDINGS_ENABLED and model is not None and chunks_for_vectors:
                         _embed_and_upsert(model, chunks_for_vectors)
-                        set_ingest_state(engine, t.version_id, "embedded", last_chunk_index=chunk_rows[-1]["chunk_index"])
+                        checkpoint_state(
+                            t.version_id,
+                            "embedded",
+                            last_chunk_index=chunk_rows[-1]["chunk_index"],
+                        )
+                        can_checkpoint_bm25 = False
                         chunks_for_vectors.clear()
 
                     chunk_rows.clear()
@@ -1749,20 +1808,28 @@ def run() -> None:
             if chunk_rows:
                 upsert_chunks_batch(engine, chunk_rows)
                 os_bulk_index(os_docs)
-                if checkpoint_bm25:
-                    set_ingest_state(engine, t.version_id, "indexed_bm25", last_chunk_index=chunk_rows[-1]["chunk_index"])
+                if can_checkpoint_bm25:
+                    checkpoint_state(
+                        t.version_id,
+                        "indexed_bm25",
+                        last_chunk_index=chunk_rows[-1]["chunk_index"],
+                    )
 
                 if EMBEDDINGS_ENABLED and model is not None and chunks_for_vectors:
                     _embed_and_upsert(model, chunks_for_vectors)
-                    set_ingest_state(engine, t.version_id, "embedded", last_chunk_index=chunk_rows[-1]["chunk_index"])
+                    checkpoint_state(
+                        t.version_id,
+                        "embedded",
+                        last_chunk_index=chunk_rows[-1]["chunk_index"],
+                    )
 
             # Populate prev/next links after all chunks for this version exist.
             set_chunk_links(engine, t.version_id)
-            set_ingest_state(engine, t.version_id, "complete")
+            checkpoint_state(t.version_id, "complete")
 
         except Exception as e:
             LOG.exception("Failed ingest for version_id=%s path=%s", t.version_id, t.repo_path)
-            set_ingest_state(engine, t.version_id, "failed", error_message=str(e))
+            checkpoint_state(t.version_id, "failed", error_message=str(e))
             run_stats["failed"] += 1
 
     LOG.info(
@@ -1773,6 +1840,17 @@ def run() -> None:
         run_stats["reprocessed"],
         run_stats["failed"],
     )
+    if invalid_transition_counts:
+        total_invalid = sum(invalid_transition_counts.values())
+        details = ", ".join(
+            f"{transition}={count}"
+            for transition, count in invalid_transition_counts.most_common()
+        )
+        LOG.warning(
+            "Ingest state transition skips: total=%d by_transition=[%s]",
+            total_invalid,
+            details,
+        )
 
 
 def _embed_and_upsert(model: SentenceTransformer, chunks_for_vectors: List[Tuple[str, str, dict]]) -> None:
